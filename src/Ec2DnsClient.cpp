@@ -4,7 +4,6 @@
 #include "dlz_minimal.h"
 #include "aws/core/utils/json/JsonSerializer.h"
 
-
 bool TryLoadEc2DnsConfig(Aws::String file, Ec2DnsConfig *config) {
   std::ifstream f(file);
   if(f.fail()) {
@@ -24,7 +23,49 @@ bool TryLoadEc2DnsConfig(Aws::String file, Ec2DnsConfig *config) {
   if(root.ValueExists("aws_secret_key")) {
     config->aws_secret_key = root.GetString("aws_secret_key");
   }
+  if(root.ValueExists("log_level")) {
+    config->log_level = root.GetInteger("log_level");
+  }
+  if(root.ValueExists("log_path")) {
+    config->log_path = root.GetString("log_path");
+  }
+  if(root.ValueExists("requestTimeoutMs")) {
+    config->client_config.requestTimeoutMs = root.GetInteger("requestTimeoutMs");
+  }
+  else {
+    config->client_config.requestTimeoutMs = 1000;
+  }
+  if(root.ValueExists("connectTimeoutMs")) {
+    config->client_config.connectTimeoutMs = root.GetInteger("connectTimeoutMs");
+  }
+  else {
+    config->client_config.connectTimeoutMs = 1000;
+  }
+  if(root.ValueExists("region")) {
+    auto region = root.GetString("region");
+    auto regionEnum = Aws::Region::US_EAST_1;
+#define MAYBE_SET_REGION(str, value) if(region == str) { regionEnum = Aws::Region::value; }
 
+    MAYBE_SET_REGION("us-west-1", US_WEST_1)
+    MAYBE_SET_REGION("us-west-2", US_WEST_2)
+    MAYBE_SET_REGION("eu-west-1", EU_WEST_1)
+    MAYBE_SET_REGION("eu-central-1", EU_CENTRAL_1)
+    MAYBE_SET_REGION("ap-southeast-1", AP_SOUTHEAST_1)
+    MAYBE_SET_REGION("ap-southeast-2", AP_SOUTHEAST_2)
+    MAYBE_SET_REGION("ap-northeast-1", AP_NORTHEAST_1)
+    MAYBE_SET_REGION("sa-east-1", SA_EAST_1)
+    config->client_config.region = regionEnum;
+  }
+  if(root.ValueExists("authenticationRegion")) {
+    config->client_config.authenticationRegion = root.GetString("authenticationRegion");
+  }
+  if(root.ValueExists("endpointOverride")) {
+    config->client_config.endpointOverride = root.GetString("endpointOverride");
+  }
+  if(root.ValueExists("use_ssl")) {
+    config->client_config.scheme =
+      root.GetBool("use_ssl") ? Aws::Http::Scheme::HTTPS : Aws::Http::Scheme::HTTP;
+  }
   return true;
 }
 

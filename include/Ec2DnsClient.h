@@ -20,11 +20,18 @@ struct DlzCallbacks {
   dns_sdlz_putnamedrr_t *putnamedrr;
 };
 
-struct Ec2DnsConfig {
+class Ec2DnsConfig {
+public:
+    Ec2DnsConfig()
+      : client_config(), log_level(0) { }
+
     Aws::String aws_access_key;
     Aws::String aws_secret_key;
-    bool use_ssl;
+
+    Aws::Client::ClientConfiguration client_config;
+
     int log_level;
+    Aws::String log_path;
 };
 
 bool TryLoadEc2DnsConfig(Aws::String file, Ec2DnsConfig *config);

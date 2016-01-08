@@ -42,16 +42,21 @@ isc_result_t dlz_create(const char *dlzname, unsigned int argc, char *argv[],
 
   Ec2DnsConfig dnsConfig;
   TryLoadEc2DnsConfig("/etc/awsdns.conf", &dnsConfig);
+  if(dnsConfig.log_path.empty()) {
+    dnsConfig.log_path = "aws_api_";
+  }
 
-  Aws::Utils::Logging::InitializeAWSLogging(Aws::MakeShared<Aws::Utils::Logging::DefaultLogSystem>("RunUnitTests", Aws::Utils::Logging::LogLevel::Info, "aws_sdk_"));
-  Aws::Client::ClientConfiguration config;
+  Aws::Utils::Logging::InitializeAWSLogging(
+    Aws::MakeShared<Aws::Utils::Logging::DefaultLogSystem>(
+      "log", (Aws::Utils::Logging::LogLevel)dnsConfig.log_level, dnsConfig.log_path));
+
   std::shared_ptr<Aws::EC2::EC2Client> ec2Client;
   if(!dnsConfig.aws_access_key.empty() && !dnsConfig.aws_secret_key.empty()) {
     Aws::Auth::AWSCredentials creds(dnsConfig.aws_access_key, dnsConfig.aws_secret_key);
-    ec2Client = Aws::MakeShared<Aws::EC2::EC2Client>("client", creds, config);
+    ec2Client = Aws::MakeShared<Aws::EC2::EC2Client>("client", creds, dnsConfig.client_config);
   }
   else {
-    ec2Client = Aws::MakeShared<Aws::EC2::EC2Client>("client", config);
+    ec2Client = Aws::MakeShared<Aws::EC2::EC2Client>("client", dnsConfig.client_config);
   }
 
   Ec2DnsClient *cli = new Ec2DnsClient(cbs, ec2Client, strdup(argv[1]), dnsConfig);
@@ -63,6 +68,7 @@ isc_result_t dlz_create(const char *dlzname, unsigned int argc, char *argv[],
 
 void dlz_destroy(void *dbdata) {
   delete static_cast<Ec2DnsClient*>(dbdata);
+  Aws::Utils::Logging::ShutdownAWSLogging();
 }
 
 isc_result_t dlz_findzonedb(void *dbdata, const char *name) {
