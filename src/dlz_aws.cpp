@@ -3,6 +3,7 @@
 #include "dlz_minimal.h"
 #include "Ec2DnsClient.h"
 #include "aws/core/auth/AWSCredentialsProvider.h"
+#include "aws/core/utils/StringUtils.h"
 #include "aws/core/utils/logging/AWSLogging.h"
 #include "aws/core/utils/logging/DefaultLogSystem.h"
 
@@ -25,6 +26,17 @@ b9_add_helper(DlzCallbacks *cbs,
     cbs->putnamedrr = (dns_sdlz_putnamedrr_t *)ptr;
 }
 
+struct dlz_state {
+    Ec2DnsClient* client;
+    std::string soa_data;
+    std::string zone_name;
+    DlzCallbacks callbacks;
+
+    ~dlz_state() {
+      delete client;
+    }
+};
+
 isc_result_t dlz_create(const char *dlzname, unsigned int argc, char *argv[],
   void **dbdata, ...) {
 
@@ -41,10 +53,7 @@ isc_result_t dlz_create(const char *dlzname, unsigned int argc, char *argv[],
   cbs.log(ISC_LOG_WARNING, "Creating EC2 client");
 
   Ec2DnsConfig dnsConfig;
-  TryLoadEc2DnsConfig("/etc/awsdns.conf", &dnsConfig);
-  if(dnsConfig.log_path.empty()) {
-    dnsConfig.log_path = "aws_api_";
-  }
+  TryLoadEc2DnsConfig("/etc/ec2dns.conf", &dnsConfig);
 
   Aws::Utils::Logging::InitializeAWSLogging(
     Aws::MakeShared<Aws::Utils::Logging::DefaultLogSystem>(
@@ -59,40 +68,62 @@ isc_result_t dlz_create(const char *dlzname, unsigned int argc, char *argv[],
     ec2Client = Aws::MakeShared<Aws::EC2::EC2Client>("client", dnsConfig.client_config);
   }
 
-  Ec2DnsClient *cli = new Ec2DnsClient(cbs, ec2Client, strdup(argv[1]), dnsConfig);
-  *dbdata = cli;
+  auto state = new dlz_state();
+  state->client = new Ec2DnsClient(cbs, ec2Client, strdup(argv[1]), dnsConfig);
+  state->zone_name = strdup(argv[1]);
+  state->callbacks = cbs;
+
+  Aws::OStringStream soaData;
+  soaData << state->zone_name
+          << " hostmaster." << state->zone_name
+          << " 123 900 600 86400 3600";
+  state->soa_data = soaData.str();
+
+  *dbdata = state;
 
   cbs.log(ISC_LOG_WARNING, "EC2 client created");
   return ISC_R_SUCCESS;
 }
 
 void dlz_destroy(void *dbdata) {
-  delete static_cast<Ec2DnsClient*>(dbdata);
+  delete static_cast<dlz_state*>(dbdata);
   Aws::Utils::Logging::ShutdownAWSLogging();
 }
 
 isc_result_t dlz_findzonedb(void *dbdata, const char *name) {
-  Ec2DnsClient* state = static_cast<Ec2DnsClient*>(dbdata);
-  return state->IsAwsZone(name) ? ISC_R_SUCCESS : ISC_R_NOTFOUND;
+  auto state = static_cast<dlz_state*>(dbdata);
+  auto match = Aws::Utils::StringUtils::CaselessCompare(state->zone_name.c_str(), name);
+  return match ? ISC_R_SUCCESS : ISC_R_NOTFOUND;
 }
 
 isc_result_t dlz_lookup(const char *zone, const char *name, void *dbdata,
   dns_sdlzlookup_t *lookup,
   dns_clientinfomethods_t *methods,
   dns_clientinfo_t *clientinfo) {
+  auto state = static_cast<dlz_state*>(dbdata);
 
-  Ec2DnsClient* client = static_cast<Ec2DnsClient*>(dbdata);
-  auto name_str = std::string(name);
-  if (client->IsAwsZone(zone) &&
-      name_str.compare(0, 2, "i-") == 0) {
-    Aws::String ip;
-    auto success = client->ResolveInstanceIp(name_str, &ip);
-    if(success) {
-      return client->Callbacks().putrr(lookup, "A", 120, ip.c_str());
-    }
+  //state->callbacks.log(ISC_LOG_INFO, "looking up %s for zone %s", name, zone);
+
+  if(strcmp(name, "@") == 0) {
+    state->callbacks.putrr(lookup, "SOA", 3600, state->soa_data.c_str());
+    state->callbacks.putrr(lookup, "NS", 3600, state->zone_name.c_str());
+    return ISC_R_SUCCESS;
+  }
+  if(strcmp(name, "*") == 0) {
     return ISC_R_NOTFOUND;
   }
 
+  auto split = Aws::Utils::StringUtils::Split(name, '-');
+  if(split.size() < 3) {
+    state->callbacks.log(ISC_LOG_ERROR, "Invalid format for name %s", name);
+    return ISC_R_NOTFOUND;
+  }
+
+  Aws::String ip;
+  auto success = state->client->ResolveInstanceIp("i-" + split[1], &ip);
+  if(success) {
+    return state->callbacks.putrr(lookup, "A", 120, ip.c_str());
+  }
   return ISC_R_NOTFOUND;
 }
 

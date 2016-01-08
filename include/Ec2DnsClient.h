@@ -47,13 +47,7 @@ public:
     : m_callbacks(callbacks), m_ec2Client(ec2Client), m_zoneName(zoneName), m_config(config)
   { }
 
-  bool IsAwsZone(const char* zone);
-
   bool ResolveInstanceIp(Aws::String instanceId, Aws::String *ip);
-
-  DlzCallbacks Callbacks() {
-    return this->m_callbacks;
-  }
 
 private:
   Ec2DnsConfig m_config;

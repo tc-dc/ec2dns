@@ -26,8 +26,14 @@ bool TryLoadEc2DnsConfig(Aws::String file, Ec2DnsConfig *config) {
   if(root.ValueExists("log_level")) {
     config->log_level = root.GetInteger("log_level");
   }
+  else {
+    config->log_level = 0; //Off
+  }
   if(root.ValueExists("log_path")) {
     config->log_path = root.GetString("log_path");
+  }
+  else {
+    config->log_path = "ec2_dns_aws_";
   }
   if(root.ValueExists("requestTimeoutMs")) {
     config->client_config.requestTimeoutMs = root.GetInteger("requestTimeoutMs");
@@ -71,14 +77,20 @@ bool TryLoadEc2DnsConfig(Aws::String file, Ec2DnsConfig *config) {
 
 
 bool Ec2DnsClient::ResolveInstanceIp(Aws::String instanceId, Aws::String *ip) {
-  this->m_callbacks.log(ISC_LOG_WARNING, "Querying name %s", instanceId.c_str());
+  this->m_callbacks.log(
+    ISC_LOG_INFO, "ec2dns - Querying name %s", instanceId.c_str());
 
   Aws::EC2::Model::DescribeInstancesRequest req;
   req.AddInstanceIds(instanceId);
   auto ret = this->m_ec2Client->DescribeInstances(req);
-  this->m_callbacks.log(ISC_LOG_WARNING, "Request complete");
+  this->m_callbacks.log(ISC_LOG_INFO, "ec2dns - API Request complete");
   auto success = ret.IsSuccess();
   if(!success) {
+    auto errorMessage = ret.GetError().GetMessage();
+    this->m_callbacks.log(
+      ISC_LOG_ERROR,
+      "ec2dns - API request DescribeInstances failed with error: %s",
+      errorMessage.c_str());
     return false;
   }
 
@@ -87,14 +99,13 @@ bool Ec2DnsClient::ResolveInstanceIp(Aws::String instanceId, Aws::String *ip) {
     auto instances = r.GetInstances();
     for (auto &i : instances) {
       *ip = i.GetPrivateIpAddress();
-      this->m_callbacks.log(ISC_LOG_WARNING, "Found IP");
+      this->m_callbacks.log(ISC_LOG_INFO, "Found IP");
       return true;
     }
   }
+  this->m_callbacks.log(
+    ISC_LOG_WARNING,
+    "ec2dns - Unable to resolve instance %s because it was not found.",
+    instanceId.c_str());
   return false;
-}
-
-bool Ec2DnsClient::IsAwsZone(const char *zone) {
-  this->m_callbacks.log(ISC_LOG_WARNING, "Querying AWS zone %s", zone);
-  return (strcasecmp(this->m_zoneName.c_str(), zone) == 0);
 }

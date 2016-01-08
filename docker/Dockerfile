@@ -1,7 +1,8 @@
 FROM centos:centos7
 
 RUN yum -y groupinstall 'Development Tools'
-RUN yum -y install libcurl-devel openssl-devel
+RUN yum -y install libcurl-devel openssl-devel ruby-devel \
+ && gem install fpm
 RUN curl https://cmake.org/files/v3.4/cmake-3.4.1-Linux-x86_64.tar.gz -o /opt/cmake.tgz \
  && tar -xvf /opt/cmake.tgz -C /opt
 
@@ -20,7 +21,7 @@ RUN mkdir /tmp/aws-sdk-cpp/build \
  && make -j4
 RUN cd /tmp/aws-sdk-cpp/build && make install
 
-ENV EC2_DNS_REV ca0edc0b5cfb367f3721f5dacc943271ee583abc
+ENV EC2_DNS_REV d057f6e0009cf1627a4a26a4250487965af24159
 
 # Build ec2dns
 RUN cd /tmp \
@@ -33,4 +34,15 @@ RUN mkdir /tmp/ec2dns/build \
     /tmp/ec2dns \
  && make -j4
 
-ENTRYPOINT cp /tmp/ec2dns/build/libec2dns.so /out
+ADD rpm/scripts/postinstall.sh /tmp/
+# make an rpm
+RUN cd /tmp/ec2dns/build \
+ && fpm -t rpm \
+        -s dir \
+        --version 1.0 \
+        -n ec2dns \
+        --prefix /var/named \
+        --after-install /tmp/postinstall.sh \
+        libec2dns.so
+
+CMD cp /tmp/ec2dns/build/*.rpm /out
