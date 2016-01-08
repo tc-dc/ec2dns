@@ -39,7 +39,7 @@ typedef unsigned int isc_result_t;
 typedef int isc_boolean_t;
 typedef uint32_t dns_ttl_t;
 
-#define DLZ_DLOPEN_VERSION 1
+#define DLZ_DLOPEN_VERSION 2
 
 /* return this in flags to dlz_version() if thread safe */
 #define DNS_SDLZFLAG_THREADSAFE		0x00000001U

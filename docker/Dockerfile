@@ -20,3 +20,17 @@ RUN mkdir /tmp/aws-sdk-cpp/build \
  && make -j4
 RUN cd /tmp/aws-sdk-cpp/build && make install
 
+ENV EC2_DNS_REV ca0edc0b5cfb367f3721f5dacc943271ee583abc
+
+# Build ec2dns
+RUN cd /tmp \
+ && git clone https://github.com/tellapart/ec2dns.git \
+ && cd /tmp/ec2dns \
+ && git checkout ${EC2_DNS_REV}
+RUN mkdir /tmp/ec2dns/build \
+ && cd /tmp/ec2dns/build \
+ && /opt/cmake-3.4.1-Linux-x86_64/bin/cmake \
+    /tmp/ec2dns \
+ && make -j4
+
+ENTRYPOINT cp /tmp/ec2dns/build/libec2dns.so /out
