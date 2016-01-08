@@ -7,7 +7,8 @@ include_directories("/usr/local/include")
 include_directories("./include")
 
 link_directories("/usr/local/lib/mac")
-link_directories("/usr/local/lib/linux/intel64")
+link_directories("/usr/local/lib/linux/intel64/Release")
+link_directories("/usr/local/lib/linux/intel64/")
 
 add_library(awsdns SHARED include/Ec2DnsClient.h src/Ec2DnsClient.cpp src/dlz_aws.cpp)
 
