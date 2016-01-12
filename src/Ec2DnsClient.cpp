@@ -75,37 +75,143 @@ bool TryLoadEc2DnsConfig(Aws::String file, Ec2DnsConfig *config) {
   return true;
 }
 
-
-bool Ec2DnsClient::ResolveInstanceIp(Aws::String instanceId, Aws::String *ip) {
-  this->m_callbacks.log(
-    ISC_LOG_INFO, "ec2dns - Querying name %s", instanceId.c_str());
+bool Ec2DnsClient::_DescribeInstances(
+    const std::string& instanceId,
+    Aws::Vector<Aws::EC2::Model::Instance> *instances) {
 
   Aws::EC2::Model::DescribeInstancesRequest req;
-  req.AddInstanceIds(instanceId);
-  auto ret = this->m_ec2Client->DescribeInstances(req);
-  this->m_callbacks.log(ISC_LOG_INFO, "ec2dns - API Request complete");
-  auto success = ret.IsSuccess();
-  if(!success) {
-    auto errorMessage = ret.GetError().GetMessage();
-    this->m_callbacks.log(
-      ISC_LOG_ERROR,
-      "ec2dns - API request DescribeInstances failed with error: %s",
-      errorMessage.c_str());
-    return false;
+  if (instanceId.empty()) {
+    this->m_log(ISC_LOG_INFO, "ec2dns - Getting all instances");
+  }
+  else {
+    req.AddInstanceIds(instanceId);
   }
 
-  auto reservs = ret.GetResult().GetReservations();
-  for (auto &r : reservs) {
-    auto instances = r.GetInstances();
-    for (auto &i : instances) {
-      *ip = i.GetPrivateIpAddress();
-      this->m_callbacks.log(ISC_LOG_INFO, "Found IP");
-      return true;
+  std::vector<Aws::EC2::Model::Instance> allInstances;
+  std::string nextToken;
+  do {
+    auto ret = this->m_ec2Client->DescribeInstances(req);
+    this->m_log(ISC_LOG_INFO, "ec2dns - API Request complete");
+    if (!ret.IsSuccess()) {
+      auto errorMessage = ret.GetError().GetMessage();
+      this->m_log(
+        ISC_LOG_ERROR,
+        "ec2dns - API request DescribeInstances failed with error: %s",
+        errorMessage.c_str());
+      return false;
     }
+
+    auto result = ret.GetResult();
+    auto reservs = result.GetReservations();
+    for (auto& r : reservs) {
+      auto resInstances = r.GetInstances();
+      allInstances.insert(
+        allInstances.end(),
+        resInstances.begin(),
+        resInstances.end());
+    }
+    nextToken = result.GetNextToken();
+    req.SetNextToken(nextToken);
+  } while(!nextToken.empty());
+
+  *instances = allInstances;
+  return true;
+}
+
+bool Ec2DnsClient::_QueryInstance(const std::string& instanceId, std::string *ip) {
+  this->m_log(
+    ISC_LOG_INFO, "ec2dns - Querying name %s", instanceId.c_str());
+
+  Aws::Vector<Aws::EC2::Model::Instance> instances;
+  bool success = this->_DescribeInstances(instanceId, &instances);
+  if (success && instances.size() > 0) {
+    *ip = instances[0].GetPrivateIpAddress();
+    return true;
   }
-  this->m_callbacks.log(
+  if (!success) {
+    return false;
+  }
+  this->m_log(
     ISC_LOG_WARNING,
     "ec2dns - Unable to resolve instance %s because it was not found.",
     instanceId.c_str());
   return false;
+}
+
+bool Ec2DnsClient::_CheckCache(const std::string& instanceId, std::string *ip) {
+  std::lock_guard<std::mutex> lock(this->m_cacheLock);
+  auto found = this->m_cache.find(instanceId);
+  if (found == this->m_cache.end()) {
+    this->m_stats.Miss();
+    return false;
+  }
+  else {
+    *ip = found->second.GetIp();
+    this->m_stats.Hit();
+    return true;
+  }
+}
+
+void Ec2DnsClient::_InsertCache(
+  const std::string& instanceId,
+  const std::string& ip) {
+  auto expiresOn = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+  this->_InsertCache(instanceId, ip, expiresOn);
+}
+
+void Ec2DnsClient::_InsertCache(
+  const std::string& instanceId,
+  const std::string& ip,
+  const std::chrono::time_point<std::chrono::steady_clock> expiresOn) {
+
+  std::lock_guard<std::mutex> lock(this->m_cacheLock);
+  this->m_cache[instanceId] = CacheEntry(ip, expiresOn);
+}
+
+bool Ec2DnsClient::ResolveInstanceIp(const Aws::String& instanceId, Aws::String *ip) {
+  if (instanceId.empty()) {
+    return false;
+  }
+  if (this->_CheckCache(instanceId, ip)) {
+    return true;
+  }
+  if (this->_QueryInstance(instanceId, ip)) {
+    this->_InsertCache(instanceId, *ip);
+    return true;
+  }
+  return false;
+}
+
+void Ec2DnsClient::_RefreshInstanceData() {
+  while (true) {
+    this->_RefreshInstanceDataImpl();
+    std::this_thread::sleep_for(
+      std::chrono::seconds(this->m_config.refresh_interval));
+  }
+}
+
+void Ec2DnsClient::_RefreshInstanceDataImpl() {
+  Aws::Vector<Aws::EC2::Model::Instance> instances;
+  bool success = this->_DescribeInstances("", &instances);
+  if (not success) {
+    this->m_log(ISC_LOG_ERROR, "ec2dns - Unable to refresh cache.");
+  }
+
+  {
+    std::lock_guard<std::mutex>(this->m_cacheLock);
+    auto expiresOn = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    std::vector<Aws::String> toDelete;
+    for (auto it = this->m_cache.begin(); it != this->m_cache.end(); ++it) {
+      if (!it->second.IsValid()) {
+        toDelete.push_back(it->first);
+      }
+    }
+    for (auto it = toDelete.begin(); it != toDelete.end(); ++it) {
+      this->m_cache.erase(*it);
+    }
+    for (auto it = instances.begin(); it != instances.end(); ++it) {
+      this->_InsertCache(it->GetInstanceId(), it->GetPrivateIpAddress(), expiresOn);
+    }
+  }
+  this->m_log(ISC_LOG_INFO, "ec2dns - Refreshed cache with %d instances", instances.size());
 }

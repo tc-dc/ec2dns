@@ -69,7 +69,7 @@ isc_result_t dlz_create(const char *dlzname, unsigned int argc, char *argv[],
   }
 
   auto state = new dlz_state();
-  state->client = new Ec2DnsClient(cbs, ec2Client, strdup(argv[1]), dnsConfig);
+  state->client = new Ec2DnsClient(cbs.log, ec2Client, strdup(argv[1]), dnsConfig);
   state->zone_name = strdup(argv[1]);
   state->callbacks = cbs;
 

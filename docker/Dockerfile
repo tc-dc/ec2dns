@@ -21,7 +21,7 @@ RUN mkdir /tmp/aws-sdk-cpp/build \
  && make -j4
 RUN cd /tmp/aws-sdk-cpp/build && make install
 
-ENV EC2_DNS_REV d057f6e0009cf1627a4a26a4250487965af24159
+ENV EC2_DNS_REV b155e837aa5b1a4d386581561adc7c980ffe972d
 
 # Build ec2dns
 RUN cd /tmp \
