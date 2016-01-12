@@ -1,9 +1,8 @@
 FROM centos:centos7
 
 RUN yum -y groupinstall 'Development Tools' \
- && yum -y install epel-release \
- && yum -y install clang boost
-RUN yum -y install libcurl-devel openssl-devel ruby-devel \
+ && yum -y install epel-release
+RUN yum -y install libcurl-devel openssl-devel ruby-devel clang which \
  && gem install fpm
 RUN curl https://cmake.org/files/v3.4/cmake-3.4.1-Linux-x86_64.tar.gz -o /opt/cmake.tgz \
  && tar -xvf /opt/cmake.tgz -C /opt
@@ -25,7 +24,14 @@ RUN mkdir /tmp/aws-sdk-cpp/build \
  && make -j4
 RUN cd /tmp/aws-sdk-cpp/build && make install
 
-ENV EC2_DNS_REV 53585fbab4225b0d9f2c108d59c701cd54713f91
+ENV EC2_DNS_REV c822ba7e888db56946e2075aa8e373c62cbaf013
+
+RUN cd /tmp \
+ && curl http://iweb.dl.sourceforge.net/project/boost/boost/1.60.0/boost_1_60_0.tar.bz2 -o boost.tar.bz2 \
+ && tar -xvf boost.tar.bz2 > /dev/null \
+ && cd boost_1_60_0 \
+ && ./bootstrap.sh \
+ && ./bjam cxxflags=-fPIC cflags=-fPIC -a --with-regex -j4 --layout=tagged threading=multi link=static install
 
 # Build ec2dns
 RUN cd /tmp \
