@@ -1,6 +1,5 @@
 #include <stdarg.h>
 #include <memory>
-#include <regex>
 
 #include "dlz_minimal.h"
 #include "Ec2DnsClient.h"

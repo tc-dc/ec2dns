@@ -6,36 +6,30 @@
 #define EC2DNS_HOSTMATCHER_H
 
 #include "Ec2DnsClient.h"
+#include <boost/regex.hpp>
 
 class HostMatcher {
 public:
-    HostMatcher(const Ec2DnsConfig &config) :
-        m_instanceIdx(config.regex_match_idx_instance),
-        m_zoneIdx(config.regex_match_idx_zone),
-        m_hostRegex(config.instance_regex)
-    { }
+    HostMatcher(const Ec2DnsConfig &config)
+    {
+      m_hostRegex = boost::regex(config.instance_regex, boost::regex::perl|boost::regex::icase);
+    }
 
     bool TryMatch(const std::string &host,
         std::string *instanceId,
         std::string *awsZone) {
 
-      std::smatch matches;
-      auto matched = std::regex_match(host, matches, m_hostRegex);
-      if (!matched) {
+      boost::smatch matches;
+      if (!boost::regex_match(host, matches, m_hostRegex)) {
         return false;
       }
-      if (matches.size() <= std::max(m_instanceIdx, m_zoneIdx)) {
-        return false;
-      }
-      *instanceId = "i-" + static_cast<std::string>(matches[m_instanceIdx]);
-      *awsZone = static_cast<std::string>(matches[m_zoneIdx]);
+      *instanceId = "i-" + static_cast<std::string>(matches["instanceId"]);
+      *awsZone = static_cast<std::string>(matches["region"]);
       return true;
     }
 
 private:
-    int m_instanceIdx;
-    int m_zoneIdx;
-    std::regex m_hostRegex;
+    boost::regex m_hostRegex;
 };
 
 #endif //EC2DNS_HOSTMATCHER_H

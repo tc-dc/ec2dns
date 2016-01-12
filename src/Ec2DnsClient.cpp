@@ -75,12 +75,6 @@ bool TryLoadEc2DnsConfig(Aws::String file, Ec2DnsConfig *config) {
   if (root.ValueExists("instance_regex")) {
     config->instance_regex = root.GetString("instance_regex");
   }
-  if (root.ValueExists("regex_match_idx_instance")) {
-    config->regex_match_idx_instance = root.GetInteger("regex_match_idx_instance");
-  }
-  if (root.ValueExists("regex_match_idx_zone")) {
-    config->regex_match_idx_zone = root.GetInteger("regex_match_idx_zone");
-  }
 
   return true;
 }

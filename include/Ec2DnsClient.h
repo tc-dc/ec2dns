@@ -23,7 +23,7 @@ struct DlzCallbacks {
   dns_sdlz_putnamedrr_t *putnamedrr;
 };
 
-#define DEFAULT_INSTANCE_REGEX "^([a-z]{2}\\d)([a-z])-(\\w*)-(\\w{2})$"
+#define DEFAULT_INSTANCE_REGEX "^(?<region>[a-z]{2}\\d)(?<zone>[a-z])-(?<instanceId>\\w*)-(?<account>\\w{2})$"
 
 class Ec2DnsConfig {
 public:
@@ -32,9 +32,7 @@ public:
         log_level(0),
         refresh_interval(60),
         instance_timeout(120),
-        instance_regex(DEFAULT_INSTANCE_REGEX),
-        regex_match_idx_instance(3),
-        regex_match_idx_zone(1)
+        instance_regex(DEFAULT_INSTANCE_REGEX)
     { }
 
     Aws::String aws_access_key;
@@ -43,8 +41,6 @@ public:
     Aws::Client::ClientConfiguration client_config;
 
     Aws::String instance_regex;
-    int regex_match_idx_instance;
-    int regex_match_idx_zone;
 
     int log_level;
     Aws::String log_path;
