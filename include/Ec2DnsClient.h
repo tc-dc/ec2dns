@@ -15,6 +15,7 @@
 #include <unordered_map>
 
 using namespace Aws::EC2;
+using namespace std::chrono;
 
 struct DlzCallbacks {
   log_t *log;
@@ -22,18 +23,28 @@ struct DlzCallbacks {
   dns_sdlz_putnamedrr_t *putnamedrr;
 };
 
+#define DEFAULT_INSTANCE_REGEX "^([a-z]{2}\\d)([a-z])-(\\w*)-(\\w{2})$"
+
 class Ec2DnsConfig {
 public:
     Ec2DnsConfig()
       : client_config(),
         log_level(0),
         refresh_interval(60),
-        instance_timeout(120) { }
+        instance_timeout(120),
+        instance_regex(DEFAULT_INSTANCE_REGEX),
+        regex_match_idx_instance(3),
+        regex_match_idx_zone(1)
+    { }
 
     Aws::String aws_access_key;
     Aws::String aws_secret_key;
 
     Aws::Client::ClientConfiguration client_config;
+
+    Aws::String instance_regex;
+    int regex_match_idx_instance;
+    int regex_match_idx_zone;
 
     int log_level;
     Aws::String log_path;
@@ -67,9 +78,9 @@ class Ec2DnsClient {
 public:
   Ec2DnsClient(
     log_t *logCb,
-    std::shared_ptr<EC2Client> ec2Client,
-    std::string zoneName,
-    Ec2DnsConfig config
+    const std::shared_ptr<EC2Client> ec2Client,
+    const std::string zoneName,
+    const Ec2DnsConfig config
   )
     : m_log(logCb), m_ec2Client(ec2Client), m_zoneName(zoneName), m_config(config)
   {
@@ -83,7 +94,7 @@ private:
   public:
       CacheEntry() { }
 
-      CacheEntry(const Aws::String &ip, std::chrono::time_point<std::chrono::steady_clock> expiresOn):
+      CacheEntry(const Aws::String &ip, const time_point<steady_clock> expiresOn):
         m_ip(ip), m_expiresOn(expiresOn) { }
 
       Aws::String GetIp() {
@@ -91,20 +102,20 @@ private:
       }
 
       bool IsValid() {
-        return std::chrono::steady_clock::now() < m_expiresOn;
+        return steady_clock::now() < m_expiresOn;
       }
   private:
       Aws::String m_ip;
-      std::chrono::time_point<std::chrono::steady_clock> m_expiresOn;
+      time_point<steady_clock> m_expiresOn;
   };
 
   void _RefreshInstanceData();
   void _RefreshInstanceDataImpl();
   bool _CheckCache(const std::string& instanceId, std::string *ip);
   void _InsertCache(const std::string& instanceId, const std::string& ip);
-  void _InsertCache(const std::string& instanceId, const std::string& ip, const std::chrono::time_point<std::chrono::steady_clock> expiresOn);
+  void _InsertCache(const std::string& instanceId, const std::string& ip, const time_point<steady_clock> expiresOn);
   bool _QueryInstance(const std::string& instanceId, std::string *ip);
-  bool _DescribeInstances(const std::string& instanceId, Aws::Vector<Aws::EC2::Model::Instance> *instances);
+  bool _DescribeInstances(const std::string& instanceId, Aws::Vector<Model::Instance> *instances);
 
   Ec2DnsConfig m_config;
   log_t *m_log;

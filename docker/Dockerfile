@@ -39,7 +39,7 @@ ADD rpm/scripts/postinstall.sh /tmp/
 RUN cd /tmp/ec2dns/build \
  && fpm -t rpm \
         -s dir \
-        --version 1.0 \
+        --version 1.1 \
         -n ec2dns \
         --prefix /var/named \
         --after-install /tmp/postinstall.sh \

@@ -2,6 +2,7 @@
 // Created by Steve Niemitz on 1/11/16.
 //
 #include "Ec2DnsClient.h"
+#include <regex>
 
 void log(int level, const char *str, ...) {
   std::cout << str << std::endl;
@@ -15,14 +16,13 @@ int main(int argc, char **argv) {
 
   std::this_thread::sleep_for(std::chrono::seconds(2));
 
-
-  Aws::String instanceId;
+  Aws::String instanceId = "i-edb9f06c";
   if (argc > 1) {
     instanceId = argv[1];
   }
   Aws::String ip;
   client->ResolveInstanceIp(instanceId, &ip);
-  std::cout << "Got " << ip;
+  std::cout << "Got " << ip << std::endl;
 
   std::this_thread::sleep_for(std::chrono::seconds(60));
 }
