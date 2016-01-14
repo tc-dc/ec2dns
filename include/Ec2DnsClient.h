@@ -14,6 +14,8 @@
 #include <mutex>
 #include <unordered_map>
 
+#include <boost/regex.hpp>
+
 using namespace Aws::EC2;
 using namespace std::chrono;
 
@@ -40,7 +42,7 @@ public:
 
     Aws::Client::ClientConfiguration client_config;
 
-    Aws::String instance_regex;
+    std::string instance_regex;
 
     int log_level;
     Aws::String log_path;
@@ -83,42 +85,70 @@ public:
     this->m_refreshThread = std::thread(&Ec2DnsClient::_RefreshInstanceData, this);
   }
 
-  bool ResolveInstanceIp(const Aws::String& instanceId, Aws::String *ip);
+  bool ResolveIp(const Aws::String& instanceId, Aws::String *ip);
+  bool ResolveHostname(const Aws::String& ip, Aws::String *hostname);
 
 private:
+  template<class T>
   class CacheEntry {
   public:
       CacheEntry() { }
 
-      CacheEntry(const Aws::String &ip, const time_point<steady_clock> expiresOn):
-        m_ip(ip), m_expiresOn(expiresOn) { }
+      CacheEntry(const T &item, const time_point<steady_clock> expiresOn):
+        m_item(item), m_expiresOn(expiresOn) { }
 
-      Aws::String GetIp() {
-        return m_ip;
+      T GetItem() {
+        return m_item;
       }
 
       bool IsValid() {
-        return steady_clock::now() < m_expiresOn;
+        return IsValid(steady_clock::now());
+      }
+
+      bool IsValid(const time_point<steady_clock> now) {
+        return now < m_expiresOn;
       }
   private:
-      Aws::String m_ip;
+      T m_item;
       time_point<steady_clock> m_expiresOn;
   };
 
   void _RefreshInstanceData();
   void _RefreshInstanceDataImpl();
+
+  std::string _GetRegionCode(Aws::Region region) {
+    switch (region) {
+      case Aws::Region::US_EAST_1: return "ue1";
+      case Aws::Region::US_WEST_1: return "uw1";
+      case Aws::Region::US_WEST_2: return "uw2";
+      case Aws::Region::AP_NORTHEAST_1: return "an1";
+      case Aws::Region::AP_NORTHEAST_2: return "an2";
+      case Aws::Region::AP_SOUTHEAST_1: return "as1";
+      case Aws::Region::AP_SOUTHEAST_2: return "as2";
+      case Aws::Region::EU_CENTRAL_1: return "ec1";
+      case Aws::Region::EU_WEST_1: return "ew1";
+      case Aws::Region::SA_EAST_1: return "se1";
+    }
+  }
+  std::string _GetHostname(const Model::Instance& instance);
+
   bool _CheckCache(const std::string& instanceId, std::string *ip);
   void _InsertCache(const std::string& instanceId, const std::string& ip);
   void _InsertCache(const std::string& instanceId, const std::string& ip, const time_point<steady_clock> expiresOn);
-  bool _QueryInstance(const std::string& instanceId, std::string *ip);
-  bool _DescribeInstances(const std::string& instanceId, Aws::Vector<Model::Instance> *instances);
+  void _InsertCacheNoLock(const std::string& instanceId, const std::string& ip, const time_point<steady_clock> expiresOn);
+
+  bool _Resolve(const std::string &key, const std::function<bool(const std::string&, std::string*)> valueFactory, std::string *value);
+  bool _QueryInstanceById(const std::string& instanceId, std::string *ip);
+  bool _QueryInstanceByIp(const std::string& ip, std::string *hostname);
+
+  bool _DescribeInstances(const std::string& instanceId, const std::string& ip, Aws::Vector<Model::Instance> *instances);
 
   Ec2DnsConfig m_config;
   log_t *m_log;
   std::string m_zoneName;
   std::shared_ptr<EC2Client> m_ec2Client;
 
-  std::unordered_map<Aws::String, CacheEntry> m_cache;
+  std::unordered_map<Aws::String, CacheEntry<Aws::String>> m_cache;
   std::mutex m_cacheLock;
   std::thread m_refreshThread;
   CacheStats m_stats;

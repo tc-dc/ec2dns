@@ -11,9 +11,8 @@
 class HostMatcher {
 public:
     HostMatcher(const Ec2DnsConfig &config)
-    {
-      m_hostRegex = boost::regex(config.instance_regex, boost::regex::perl|boost::regex::icase);
-    }
+      : m_hostRegex(config.instance_regex)
+    {  }
 
     bool TryMatch(const std::string &host,
         std::string *instanceId,

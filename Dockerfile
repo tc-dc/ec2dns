@@ -21,7 +21,7 @@ RUN cd /tmp \
 RUN cd /tmp \
  && git clone https://github.com/tellapart/aws-sdk-cpp.git \
  && cd /tmp/aws-sdk-cpp \
- && git checkout 3e1b57e75df2bfb68997f3454ce4ae1edda6b856
+ && git checkout 391cc36cb0ffa2ed8ff4149b4c4d5ede4fc855cd
 RUN mkdir /tmp/aws-sdk-cpp/build \
  && cd /tmp/aws-sdk-cpp/build \
  && /opt/cmake-3.4.1-Linux-x86_64/bin/cmake \
@@ -32,28 +32,32 @@ RUN mkdir /tmp/aws-sdk-cpp/build \
  && make -j4
 RUN cd /tmp/aws-sdk-cpp/build && make install
 
-ENV EC2_DNS_REV c822ba7e888db56946e2075aa8e373c62cbaf013
-
+#ENV EC2_DNS_REV c822ba7e888db56946e2075aa8e373c62cbaf013
 # Build ec2dns
-RUN cd /tmp \
- && git clone https://github.com/tellapart/ec2dns.git \
- && cd /tmp/ec2dns \
- && git checkout ${EC2_DNS_REV}
+#RUN cd /tmp \
+# && git clone https://github.com/tellapart/ec2dns.git \
+# && cd /tmp/ec2dns \
+# && git checkout ${EC2_DNS_REV}
+
+COPY include /tmp/ec2dns/include
+COPY src /tmp/ec2dns/src
+COPY docker /tmp/ec2dns/docker
+COPY CMakeLists.txt /tmp/ec2dns/
+
 RUN mkdir /tmp/ec2dns/build \
  && cd /tmp/ec2dns/build \
  && /opt/cmake-3.4.1-Linux-x86_64/bin/cmake \
     /tmp/ec2dns \
  && make -j4 ec2dns
 
-ADD rpm/scripts/postinstall.sh /tmp/
 # make an rpm
 RUN cd /tmp/ec2dns/build \
  && fpm -t rpm \
         -s dir \
-        --version 1.1 \
+        --version 1.3 \
         -n ec2dns \
         --prefix /var/named \
-        --after-install /tmp/postinstall.sh \
+        --after-install /tmp/ec2dns/docker/rpm/scripts/postinstall.sh \
         libec2dns.so
 
 CMD cp /tmp/ec2dns/build/*.rpm /out
