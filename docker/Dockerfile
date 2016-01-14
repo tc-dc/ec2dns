@@ -9,6 +9,14 @@ RUN curl https://cmake.org/files/v3.4/cmake-3.4.1-Linux-x86_64.tar.gz -o /opt/cm
 
 ENV CC=/usr/bin/clang CXX=/usr/bin/clang++
 
+# Install boost
+RUN cd /tmp \
+ && curl http://iweb.dl.sourceforge.net/project/boost/boost/1.60.0/boost_1_60_0.tar.bz2 -o boost.tar.bz2 \
+ && tar -xvf boost.tar.bz2 > /dev/null \
+ && cd boost_1_60_0 \
+ && ./bootstrap.sh \
+ && ./bjam cxxflags=-fPIC cflags=-fPIC -a --with-regex -j4 --layout=tagged threading=multi link=static install
+
 # Build the aws-sdk (you'll need mucho-ramo)
 RUN cd /tmp \
  && git clone https://github.com/tellapart/aws-sdk-cpp.git \
@@ -25,13 +33,6 @@ RUN mkdir /tmp/aws-sdk-cpp/build \
 RUN cd /tmp/aws-sdk-cpp/build && make install
 
 ENV EC2_DNS_REV c822ba7e888db56946e2075aa8e373c62cbaf013
-
-RUN cd /tmp \
- && curl http://iweb.dl.sourceforge.net/project/boost/boost/1.60.0/boost_1_60_0.tar.bz2 -o boost.tar.bz2 \
- && tar -xvf boost.tar.bz2 > /dev/null \
- && cd boost_1_60_0 \
- && ./bootstrap.sh \
- && ./bjam cxxflags=-fPIC cflags=-fPIC -a --with-regex -j4 --layout=tagged threading=multi link=static install
 
 # Build ec2dns
 RUN cd /tmp \
