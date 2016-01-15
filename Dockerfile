@@ -11,7 +11,7 @@ ENV CC=/usr/bin/clang CXX=/usr/bin/clang++
 
 # Install boost
 RUN cd /tmp \
- && curl http://iweb.dl.sourceforge.net/project/boost/boost/1.60.0/boost_1_60_0.tar.bz2 -o boost.tar.bz2 \
+ && curl https://s3.amazonaws.com/tcdc-repo/packages/boost_1_60_0.tar.bz2 -o boost.tar.bz2 \
  && tar -xvf boost.tar.bz2 > /dev/null \
  && cd boost_1_60_0 \
  && ./bootstrap.sh \
