@@ -243,7 +243,7 @@ bool Ec2DnsClient::ResolveIp(const Aws::String &instanceId, Aws::String *ip) {
       ip);
 }
 
-bool Ec2DnsClient::ResolveHostname(const Aws::String &ip, Aws::String *hostname) {
+bool Ec2DnsClient::ResolveHostname(const std::string &ip, std::string *hostname) {
   return this->_Resolve(
       ip,
       std::bind(&Ec2DnsClient::_QueryInstanceByIp, this, _1, _2),

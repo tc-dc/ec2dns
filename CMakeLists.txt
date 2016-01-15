@@ -16,11 +16,11 @@ include_directories(${Boost_INCLUDE_DIRS})
 include_directories(${AWS_SDK_INCLUDE_PATH})
 include_directories("./include")
 
-SET(SRCS include/Ec2DnsClient.h src/Ec2DnsClient.cpp src/dlz_aws.cpp)
+SET(SRCS include/Ec2DnsClient.h src/Ec2DnsClient.cpp src/dlz_aws.cpp src/ReverseLookupHelper.cpp)
 SET(LIBS ${AWS_SDK_LIB_EC2} ${AWS_SDK_LIB_CORE} curl ssl crypto ${Boost_REGEX_LIBRARY_RELEASE})
 
 add_library(ec2dns SHARED ${SRCS})
-add_executable(ec2dnsexe ${SRCS} src/test.cpp)
 
 target_link_libraries(ec2dns ${LIBS})
-target_link_libraries(ec2dnsexe ${LIBS})
+
+add_subdirectory(test)

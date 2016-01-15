@@ -16,14 +16,14 @@ public:
 
     bool TryMatch(const std::string &host,
         std::string *instanceId,
-        std::string *awsZone) {
+        std::string *awsRegion) {
 
       boost::smatch matches;
       if (!boost::regex_match(host, matches, m_hostRegex)) {
         return false;
       }
       *instanceId = "i-" + static_cast<std::string>(matches["instanceId"]);
-      *awsZone = static_cast<std::string>(matches["region"]);
+      *awsRegion = static_cast<std::string>(matches["region"]);
       return true;
     }
 

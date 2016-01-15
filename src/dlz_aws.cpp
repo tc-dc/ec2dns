@@ -10,6 +10,8 @@
 #include "dlz_minimal.h"
 #include "Ec2DnsClient.h"
 #include "HostMatcher.h"
+#include "ReverseLookupHelper.h"
+
 #include "aws/core/auth/AWSCredentialsProvider.h"
 #include "aws/core/utils/StringUtils.h"
 #include "aws/core/utils/logging/AWSLogging.h"
@@ -21,74 +23,14 @@ using namespace Aws::EC2;
 using namespace Aws::Utils;
 
 struct dlz_state {
-    std::unique_ptr<Ec2DnsClient> client;
+    std::shared_ptr<Ec2DnsClient> client;
     std::unique_ptr<HostMatcher> matcher;
+    std::unique_ptr<ReverseLookupHelper> rl_helper;
     std::string soa_data;
     std::string zone_name;
     std::unordered_set<std::string> reverse_lookup_zones;
     DlzCallbacks callbacks;
 };
-
-std::string _ReverseOctets(const std::string &ip) {
-  uint32_t inetAddr;
-  inet_pton(AF_INET, ip.c_str(), &inetAddr);
-  inetAddr = ntohl(inetAddr);
-  char buffer[100];
-  inet_ntop(AF_INET, &inetAddr, buffer, sizeof(buffer));
-  return std::string(buffer);
-}
-
-isc_result_t _DoReverseLookup(const std::string& zone, const std::string& name,
-                              dlz_state *state, dns_sdlzlookup_t *lookup) {
-  std::string fullIp = name + "." + zone;
-  if (fullIp.length() < 14) {
-    return ISC_R_NOTFOUND;
-  }
-
-  fullIp = fullIp.substr(0, fullIp.length() - 13); //13 = len(".in-addr.arpa")
-  fullIp = _ReverseOctets(fullIp);
-
-  Aws::String hostname;
-  if (state->client->ResolveHostname(fullIp, &hostname)) {
-    state->callbacks.putrr(lookup, "PTR", 120, hostname.c_str());
-    return ISC_R_SUCCESS;
-  }
-  return ISC_R_NOTFOUND;
-}
-
-bool _LoadReverseLookupZones(const std::string &vpcCidr, std::unordered_set<std::string> &zones) {
-  std::vector<std::string> split;
-  boost::algorithm::split(split, vpcCidr, boost::is_any_of("/"));
-  if (split.size() != 2) {
-    return false;
-  }
-
-  auto ip = split[0];
-  auto bitsStr = split[1];
-
-  uint32_t ipBits;
-  inet_pton(AF_INET, ip.c_str(), &ipBits);
-  ipBits &= 0x00FFFFFF;
-
-  uint8_t bits = (uint8_t)atoi(bitsStr.c_str());
-  if (bits < 8 || bits > 24) {
-    // The mask is too large or small.
-    return false;
-  }
-  uint32_t maskRange = (1 << ((32 - bits) - 8));
-
-  //Generate all class C subnets that fall inside the CIDR.
-  for (int a = 0; a < maskRange; a++) {
-    char buff[100] = {0};
-    uint32_t flipped = htonl(ipBits);
-    inet_ntop(AF_INET, &flipped, buff, sizeof(buff));
-    std::string cidrStr(buff + 2);
-    zones.insert(cidrStr + ".in-addr.arpa");
-    ipBits += (1 << 16);
-  }
-
-  return true;
-}
 
 extern "C" {
 
@@ -144,19 +86,21 @@ isc_result_t dlz_create(
   }
 
   auto state = new dlz_state();
-  state->client = std::unique_ptr<Ec2DnsClient>(
-      new Ec2DnsClient(
+  state->client = std::make_shared<Ec2DnsClient>(
           cbs.log,
           ec2Client,
           std::string(argv[1]),
-          dnsConfig));
+          dnsConfig);
   state->zone_name = argv[1];
   state->callbacks = cbs;
   state->matcher = std::unique_ptr<HostMatcher>(new HostMatcher(dnsConfig));
-  if (!_LoadReverseLookupZones(std::string(argv[2]), state->reverse_lookup_zones)) {
+  state->rl_helper = std::unique_ptr<ReverseLookupHelper>(new ReverseLookupHelper(state->client));
+  if (!state->rl_helper->InitializeReverseLookupZones(argv[2])) {
     printf("ec2dns - Unable to load reverse lookup zones");
     return ISC_R_FAILURE;
   }
+
+  state->client->LaunchRefreshThread();
 
   Aws::OStringStream soaData;
   soaData << state->zone_name
@@ -175,17 +119,13 @@ void dlz_destroy(void *dbdata) {
   Logging::ShutdownAWSLogging();
 }
 
-bool _IsReverseLookup(const std::string& zone, const dlz_state *state) {
-  return (state->reverse_lookup_zones.find(zone) != state->reverse_lookup_zones.end());
-}
-
 isc_result_t dlz_findzonedb(void *dbdata, const char *name) {
   auto state = static_cast<dlz_state *>(dbdata);
   if (StringUtils::CaselessCompare(state->zone_name.c_str(), name)) {
     return ISC_R_SUCCESS;
   }
   // Are we doing a reverse lookup?
-  if (_IsReverseLookup(name, state)) {
+  if (state->rl_helper->IsReverseLookupZone(name)) {
     return ISC_R_SUCCESS;
   }
   // Nothing we can do
@@ -204,8 +144,15 @@ isc_result_t dlz_lookup(
   if (strcmp(name, "*") == 0) {
     return ISC_R_NOTFOUND;
   }
-  if (_IsReverseLookup(zone, state)) {
-    return _DoReverseLookup(zone, name, state, lookup);
+  if (state->rl_helper->IsReverseLookupZone(zone)) {
+    std::string hostname;
+    if (state->rl_helper->DoReverseLookup(zone, name, &hostname)) {
+      state->callbacks.putrr(lookup, "PTR", 120, hostname.c_str());
+      return ISC_R_SUCCESS;
+    }
+    else {
+      return ISC_R_NOTFOUND;
+    }
   }
 
   std::string instanceId, awsZone;

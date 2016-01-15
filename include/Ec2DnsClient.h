@@ -82,11 +82,14 @@ public:
   )
     : m_log(logCb), m_ec2Client(ec2Client), m_zoneName(zoneName), m_config(config)
   {
+  }
+
+  void LaunchRefreshThread() {
     this->m_refreshThread = std::thread(&Ec2DnsClient::_RefreshInstanceData, this);
   }
 
   bool ResolveIp(const Aws::String& instanceId, Aws::String *ip);
-  bool ResolveHostname(const Aws::String& ip, Aws::String *hostname);
+  bool ResolveHostname(const std::string& ip, std::string *hostname);
 
 private:
   template<class T>
