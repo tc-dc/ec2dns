@@ -1,9 +1,9 @@
-#include "gtest.h"
+#include "gtest/gtest.h"
 
 #include "HostMatcher.h"
 #include "Ec2DnsClient.h"
 
-TEST(TestMatchesValidHostname, TestMatchesValidHostname) {
+TEST(TestHostMatcher, TestMatchesValidHostname) {
   auto config = Ec2DnsConfig();
   auto hm = HostMatcher(config);
 
@@ -15,7 +15,7 @@ TEST(TestMatchesValidHostname, TestMatchesValidHostname) {
   ASSERT_EQ(awsRegion, "ue1");
 }
 
-TEST(TestFailsInvalidHostname, TestFailsInvalidHostname) {
+TEST(TestHostMatcher, TestFailsInvalidHostname) {
   auto config = Ec2DnsConfig();
   auto hm = HostMatcher(config);
 

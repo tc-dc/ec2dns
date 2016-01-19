@@ -28,7 +28,6 @@ struct dlz_state {
     std::unique_ptr<ReverseLookupHelper> rl_helper;
     std::string soa_data;
     std::string zone_name;
-    std::unordered_set<std::string> reverse_lookup_zones;
     DlzCallbacks callbacks;
 };
 

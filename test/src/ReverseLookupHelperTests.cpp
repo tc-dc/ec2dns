@@ -1,8 +1,8 @@
-#include "gtest.h"
+#include "gtest/gtest.h"
 
 #include "ReverseLookupHelper.h"
 
-TEST(TestReverseLookupZones, TestReverseLookupZones) {
+TEST(TestReverseLookupHelper, TestReverseLookupZones) {
   auto rl = ReverseLookupHelper(std::shared_ptr<Ec2DnsClient>());
   // Create a zone from 10.1.0.0 - 10.1.3.255
   rl.InitializeReverseLookupZones("10.1.0.0/22");
