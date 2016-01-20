@@ -102,9 +102,11 @@ bool Ec2DnsClient::_DescribeInstances(
   std::vector<Aws::EC2::Model::Instance> allInstances;
   std::string nextToken;
   do {
+    this->m_apiRequests->Increment();
     auto ret = this->m_ec2Client->DescribeInstances(req);
     this->m_log(ISC_LOG_INFO, "ec2dns - API Request complete");
     if (!ret.IsSuccess()) {
+      this->m_apiFailures->Increment();
       auto errorMessage = ret.GetError().GetMessage();
       this->m_log(
           ISC_LOG_ERROR,
@@ -112,6 +114,7 @@ bool Ec2DnsClient::_DescribeInstances(
           errorMessage.c_str());
       return false;
     }
+    this->m_apiSuccesses->Increment();
 
     auto result = ret.GetResult();
     auto reservs = result.GetReservations();
@@ -150,7 +153,7 @@ bool Ec2DnsClient::_QueryInstanceById(const std::string &instanceId, std::string
   return false;
 }
 
-std::string Ec2DnsClient::_GetHostname(const Model::Instance& instance) {
+const std::string Ec2DnsClient::_GetHostname(const Model::Instance& instance) {
   auto regionCode = this->_GetRegionCode(this->m_config.client_config.region);
   auto az = instance.GetPlacement().GetAvailabilityZone();
   auto account = "tcd";
@@ -184,12 +187,12 @@ bool Ec2DnsClient::_CheckCache(const std::string &instanceId, std::string *ip) {
   std::lock_guard<std::mutex> lock(this->m_cacheLock);
   auto found = this->m_cache.find(instanceId);
   if (found == this->m_cache.end()) {
-    this->m_stats.Miss();
+    this->m_cacheMisses->Increment();
     return false;
   }
   else {
     *ip = found->second.GetItem();
-    this->m_stats.Hit();
+    this->m_cacheHits->Increment();
     return true;
   }
 }
@@ -235,6 +238,7 @@ bool Ec2DnsClient::_Resolve(
 }
 
 bool Ec2DnsClient::ResolveIp(const Aws::String &instanceId, Aws::String *ip) {
+  this->m_lookupRequests->Increment();
   return this->_Resolve(
       instanceId,
       std::bind(&Ec2DnsClient::_QueryInstanceById, this, _1, _2),
@@ -242,6 +246,7 @@ bool Ec2DnsClient::ResolveIp(const Aws::String &instanceId, Aws::String *ip) {
 }
 
 bool Ec2DnsClient::ResolveHostname(const std::string &ip, std::string *hostname) {
+  this->m_reverseLookupRequests->Increment();
   return this->_Resolve(
       ip,
       std::bind(&Ec2DnsClient::_QueryInstanceByIp, this, _1, _2),

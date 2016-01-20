@@ -15,19 +15,22 @@ RUN cd /tmp \
  && tar -xvf boost.tar.bz2 > /dev/null \
  && cd boost_1_60_0 \
  && ./bootstrap.sh \
- && ./bjam cxxflags=-fPIC cflags=-fPIC -a --with-regex -j4 --layout=tagged threading=multi link=static install
+ && ./bjam cxxflags=-fPIC cflags=-fPIC -a \
+    --with-regex --with-coroutine --with-system --with-thread --with-context \
+    -j4 --layout=tagged threading=multi link=static install
 
 # Build the aws-sdk (you'll need mucho-ramo)
 RUN cd /tmp \
  && git clone https://github.com/tellapart/aws-sdk-cpp.git \
  && cd /tmp/aws-sdk-cpp \
- && git checkout 391cc36cb0ffa2ed8ff4149b4c4d5ede4fc855cd
+ && git checkout c33664ec400d477422905320ce26a32b623a5b71
 RUN mkdir /tmp/aws-sdk-cpp/build \
  && cd /tmp/aws-sdk-cpp/build \
  && /opt/cmake-3.4.1-Linux-x86_64/bin/cmake \
     -DBUILD_ONLY="aws-cpp-sdk-ec2" \
     -DSTATIC_LINKING=1 \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_CXX_FLAGS=-fPIC \
     /tmp/aws-sdk-cpp \
  && make -j4
 RUN cd /tmp/aws-sdk-cpp/build && make install
@@ -42,6 +45,8 @@ RUN cd /tmp/aws-sdk-cpp/build && make install
 COPY include /tmp/ec2dns/include
 COPY src /tmp/ec2dns/src
 COPY docker /tmp/ec2dns/docker
+COPY test /tmp/ec2dns/test
+COPY external /tmp/ec2dns/external
 COPY CMakeLists.txt /tmp/ec2dns/
 
 RUN mkdir /tmp/ec2dns/build \
@@ -54,7 +59,7 @@ RUN mkdir /tmp/ec2dns/build \
 RUN cd /tmp/ec2dns/build \
  && fpm -t rpm \
         -s dir \
-        --version 1.3 \
+        --version 1.0.1 \
         -n ec2dns \
         --prefix /var/named \
         --after-install /tmp/ec2dns/docker/rpm/scripts/postinstall.sh \

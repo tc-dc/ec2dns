@@ -27,7 +27,7 @@ TEST(TestEc2DnsClient, TestEc2DnsClientResolveIp) {
   EXPECT_CALL(*ptr, DescribeInstances(_))
       .WillOnce(Return(_GetExpectedResponse()));
 
-  Ec2DnsClient dnsClient(&_logcb, ptr, "test-zone", Ec2DnsConfig());
+  Ec2DnsClient dnsClient(&_logcb, ptr, "test-zone", Ec2DnsConfig(), std::make_shared<StatsReceiver>());
   std::string ip;
   bool ret = dnsClient.ResolveIp("i-1234567", &ip);
   ASSERT_TRUE(ret);
@@ -39,7 +39,7 @@ TEST(TestEc2DnsClient, TestEc2DnsClientResolveHostname) {
   EXPECT_CALL(*ptr, DescribeInstances(_))
       .WillOnce(Return(_GetExpectedResponse()));
 
-  Ec2DnsClient dnsClient(&_logcb, ptr, "test-zone", Ec2DnsConfig());
+  Ec2DnsClient dnsClient(&_logcb, ptr, "test-zone", Ec2DnsConfig(), std::make_shared<StatsReceiver>());
   std::string hostname;
   bool ret = dnsClient.ResolveHostname("10.1.2.3", &hostname);
   ASSERT_TRUE(ret);

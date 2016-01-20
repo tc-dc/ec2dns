@@ -11,6 +11,7 @@
 #include "Ec2DnsClient.h"
 #include "HostMatcher.h"
 #include "ReverseLookupHelper.h"
+#include "Stats.h"
 
 #include "aws/core/auth/AWSCredentialsProvider.h"
 #include "aws/core/utils/StringUtils.h"
@@ -26,6 +27,8 @@ struct dlz_state {
     std::shared_ptr<Ec2DnsClient> client;
     std::unique_ptr<HostMatcher> matcher;
     std::unique_ptr<ReverseLookupHelper> rl_helper;
+    std::unique_ptr<StatsServer> stats_server;
+    std::shared_ptr<StatsReceiver> stats_receiver;
     std::string soa_data;
     std::string zone_name;
     DlzCallbacks callbacks;
@@ -85,11 +88,13 @@ isc_result_t dlz_create(
   }
 
   auto state = new dlz_state();
+  state->stats_receiver = std::make_shared<StatsReceiver>();
   state->client = std::make_shared<Ec2DnsClient>(
           cbs.log,
           ec2Client,
           std::string(argv[1]),
-          dnsConfig);
+          dnsConfig,
+          state->stats_receiver);
   state->zone_name = argv[1];
   state->callbacks = cbs;
   state->matcher = std::unique_ptr<HostMatcher>(new HostMatcher(dnsConfig));
@@ -106,7 +111,8 @@ isc_result_t dlz_create(
           << " hostmaster." << state->zone_name
           << " 123 900 600 86400 3600";
   state->soa_data = soaData.str();
-
+  state->stats_server = std::unique_ptr<StatsServer>(new StatsServer(8123, state->stats_receiver));
+  state->stats_server->Start();
   *dbdata = state;
 
   cbs.log(ISC_LOG_WARNING, "EC2 client created");

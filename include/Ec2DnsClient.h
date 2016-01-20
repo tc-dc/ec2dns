@@ -6,6 +6,7 @@
 #define AWSDNS_EC2DNSCLIENT_H
 
 #include "dlz_minimal.h"
+#include "Stats.h"
 #include "aws/core/utils/json/JsonSerializer.h"
 #include "aws/ec2/EC2Client.h"
 #include "aws/ec2/model/DescribeInstancesRequest.h"
@@ -31,10 +32,10 @@ class Ec2DnsConfig {
 public:
     Ec2DnsConfig()
       : client_config(),
+        instance_regex(DEFAULT_INSTANCE_REGEX),
         log_level(0),
         refresh_interval(60),
-        instance_timeout(120),
-        instance_regex(DEFAULT_INSTANCE_REGEX)
+        instance_timeout(120)
     { }
 
     Aws::String aws_access_key;
@@ -51,25 +52,6 @@ public:
     int instance_timeout;
 };
 
-class CacheStats {
-public:
-    CacheStats() :
-      m_hits(0), m_misses(0)
-    { }
-
-    inline void Hit() {
-      m_hits++;
-    }
-
-    inline void Miss() {
-      m_misses++;
-    }
-
-private:
-    std::atomic_uint_fast64_t m_hits;
-    std::atomic_uint_fast64_t m_misses;
-};
-
 bool TryLoadEc2DnsConfig(Aws::String file, Ec2DnsConfig *config);
 
 class Ec2DnsClient {
@@ -78,9 +60,17 @@ public:
     log_t *logCb,
     const std::shared_ptr<EC2Client> ec2Client,
     const std::string zoneName,
-    const Ec2DnsConfig config
+    const Ec2DnsConfig config,
+    std::shared_ptr<StatsReceiver> statsReceiver
   )
-    : m_log(logCb), m_ec2Client(ec2Client), m_zoneName(zoneName), m_config(config)
+    : m_config(config), m_log(logCb), m_zoneName(zoneName), m_ec2Client(ec2Client),
+      m_cacheHits   (statsReceiver->Create("cache_hits")),
+      m_cacheMisses (statsReceiver->Create("cache_misses")),
+      m_apiFailures (statsReceiver->Create("api_failure")),
+      m_apiRequests (statsReceiver->Create("api_requests")),
+      m_apiSuccesses(statsReceiver->Create("api_success")),
+      m_lookupRequests(statsReceiver->Create("a_requests")),
+      m_reverseLookupRequests(statsReceiver->Create("ptr_requests"))
   {
   }
 
@@ -119,7 +109,7 @@ private:
   void _RefreshInstanceData();
   void _RefreshInstanceDataImpl();
 
-  std::string _GetRegionCode(Aws::Region region) {
+  inline const std::string _GetRegionCode(const Aws::Region region) {
     switch (region) {
       case Aws::Region::US_EAST_1: return "ue1";
       case Aws::Region::US_WEST_1: return "uw1";
@@ -133,7 +123,7 @@ private:
       case Aws::Region::SA_EAST_1: return "se1";
     }
   }
-  std::string _GetHostname(const Model::Instance& instance);
+  const std::string _GetHostname(const Model::Instance& instance);
 
   bool _CheckCache(const std::string& instanceId, std::string *ip);
   void _InsertCache(const std::string& instanceId, const std::string& ip);
@@ -154,7 +144,10 @@ private:
   std::unordered_map<Aws::String, CacheEntry<Aws::String>> m_cache;
   std::mutex m_cacheLock;
   std::thread m_refreshThread;
-  CacheStats m_stats;
+
+  std::shared_ptr<Stat> m_cacheHits, m_cacheMisses,
+      m_apiFailures, m_apiRequests, m_apiSuccesses,
+      m_lookupRequests, m_reverseLookupRequests;
 };
 
 
