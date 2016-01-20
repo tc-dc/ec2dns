@@ -25,7 +25,7 @@ struct DlzCallbacks {
   dns_sdlz_putnamedrr_t *putnamedrr;
 };
 
-#define DEFAULT_INSTANCE_REGEX "^(?<region>[a-z]{2}\\d)(?<zone>[a-z])-(?<instanceId>\\w*)-(?<account>\\w{2})$"
+#define DEFAULT_INSTANCE_REGEX "^(?<region>[a-z]{2}\\d)(?<zone>[a-z])-(?<account>\\w+)-(?<instanceId>\\w*)$"
 
 class Ec2DnsConfig {
 public:

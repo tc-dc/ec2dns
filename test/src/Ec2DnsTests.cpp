@@ -43,5 +43,5 @@ TEST(TestEc2DnsClient, TestEc2DnsClientResolveHostname) {
   std::string hostname;
   bool ret = dnsClient.ResolveHostname("10.1.2.3", &hostname);
   ASSERT_TRUE(ret);
-  ASSERT_EQ(hostname, "ue1a-1234567-tc.test-zone.");
+  ASSERT_EQ(hostname, "ue1a-tcd-1234567.test-zone.");
 }

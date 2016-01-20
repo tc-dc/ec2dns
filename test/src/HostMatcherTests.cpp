@@ -8,7 +8,7 @@ TEST(TestHostMatcher, TestMatchesValidHostname) {
   auto hm = HostMatcher(config);
 
   std::string instanceId, awsRegion;
-  bool success = hm.TryMatch("ue1a-12345678-tc", &instanceId, &awsRegion);
+  bool success = hm.TryMatch("ue1a-tc-12345678", &instanceId, &awsRegion);
 
   ASSERT_TRUE(success);
   ASSERT_EQ(instanceId, "i-12345678");

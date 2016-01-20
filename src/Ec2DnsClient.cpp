@@ -150,15 +150,13 @@ bool Ec2DnsClient::_QueryInstanceById(const std::string &instanceId, std::string
   return false;
 }
 
-
-
 std::string Ec2DnsClient::_GetHostname(const Model::Instance& instance) {
   auto regionCode = this->_GetRegionCode(this->m_config.client_config.region);
   auto az = instance.GetPlacement().GetAvailabilityZone();
-  auto account = "tc";
+  auto account = "tcd";
   auto instanceId = instance.GetInstanceId().substr(2);
   std::ostringstream oss;
-  oss << regionCode << az[az.length() - 1] << "-" << instanceId << "-" << account
+  oss << regionCode << az[az.length() - 1] << "-" << account << "-" << instanceId
       << "." << this->m_zoneName << ".";
   return oss.str();
 }
