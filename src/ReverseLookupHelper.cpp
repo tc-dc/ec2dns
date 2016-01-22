@@ -64,5 +64,5 @@ bool ReverseLookupHelper::DoReverseLookup(const std::string& zone, const std::st
   fullIp = fullIp.substr(0, fullIp.length() - 13); //13 = len(".in-addr.arpa")
   fullIp = _ReverseOctets(fullIp);
 
-  return this->m_dnsClient->ResolveHostname(fullIp, hostname);
+  return this->m_dnsClient->TryResolveHostname(fullIp, hostname);
 }

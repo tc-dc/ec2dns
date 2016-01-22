@@ -35,13 +35,6 @@ RUN mkdir /tmp/aws-sdk-cpp/build \
  && make -j4
 RUN cd /tmp/aws-sdk-cpp/build && make install
 
-#ENV EC2_DNS_REV c822ba7e888db56946e2075aa8e373c62cbaf013
-# Build ec2dns
-#RUN cd /tmp \
-# && git clone https://github.com/tellapart/ec2dns.git \
-# && cd /tmp/ec2dns \
-# && git checkout ${EC2_DNS_REV}
-
 COPY include /tmp/ec2dns/include
 COPY src /tmp/ec2dns/src
 COPY docker /tmp/ec2dns/docker

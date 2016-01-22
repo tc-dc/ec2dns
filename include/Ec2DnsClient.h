@@ -33,7 +33,9 @@ public:
     Ec2DnsConfig()
       : client_config(),
         instance_regex(DEFAULT_INSTANCE_REGEX),
+        account_name("tcd"),
         log_level(0),
+        log_path("ec2_dns_aws_"),
         refresh_interval(60),
         instance_timeout(120)
     { }
@@ -44,15 +46,16 @@ public:
     Aws::Client::ClientConfiguration client_config;
 
     std::string instance_regex;
+    std::string account_name;
 
     int log_level;
     Aws::String log_path;
 
     int refresh_interval;
     int instance_timeout;
-};
 
-bool TryLoadEc2DnsConfig(Aws::String file, Ec2DnsConfig *config);
+    bool TryLoad(const std::string& file);
+};
 
 class Ec2DnsClient {
 public:
@@ -78,8 +81,8 @@ public:
     this->m_refreshThread = std::thread(&Ec2DnsClient::_RefreshInstanceData, this);
   }
 
-  bool ResolveIp(const Aws::String& instanceId, Aws::String *ip);
-  bool ResolveHostname(const std::string& ip, std::string *hostname);
+  bool TryResolveIp(const Aws::String &instanceId, Aws::String *ip);
+  bool TryResolveHostname(const std::string &ip, std::string *hostname);
 
 private:
   template<class T>

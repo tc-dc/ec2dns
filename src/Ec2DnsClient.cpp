@@ -7,7 +7,10 @@
 
 using namespace std::placeholders;
 
-bool TryLoadEc2DnsConfig(Aws::String file, Ec2DnsConfig *config) {
+bool Ec2DnsConfig::TryLoad(const std::string& file) {
+#define TryLoadString(key) if (root.ValueExists(#key)) { this->key = root.GetString(#key); }
+#define TryLoadInteger(key) if (root.ValueExists(#key)) { this->key = root.GetInteger(#key); }
+
   std::ifstream f(file);
   if (f.fail()) {
     // File didnt exist
@@ -20,36 +23,24 @@ bool TryLoadEc2DnsConfig(Aws::String file, Ec2DnsConfig *config) {
     return false;
   }
 
-  if (root.ValueExists("aws_access_key")) {
-    config->aws_access_key = root.GetString("aws_access_key");
-  }
-  if (root.ValueExists("aws_secret_key")) {
-    config->aws_secret_key = root.GetString("aws_secret_key");
-  }
-  if (root.ValueExists("log_level")) {
-    config->log_level = root.GetInteger("log_level");
-  }
-  else {
-    config->log_level = 0; //Off
-  }
-  if (root.ValueExists("log_path")) {
-    config->log_path = root.GetString("log_path");
-  }
-  else {
-    config->log_path = "ec2_dns_aws_";
-  }
+  TryLoadString(aws_access_key)
+  TryLoadString(aws_secret_key)
+  TryLoadInteger(log_level)
+  TryLoadString(log_path)
+
   if (root.ValueExists("requestTimeoutMs")) {
-    config->client_config.requestTimeoutMs = root.GetInteger("requestTimeoutMs");
+    this->client_config.requestTimeoutMs = root.GetInteger("requestTimeoutMs");
   }
   else {
-    config->client_config.requestTimeoutMs = 1000;
+    this->client_config.requestTimeoutMs = 1000;
   }
   if (root.ValueExists("connectTimeoutMs")) {
-    config->client_config.connectTimeoutMs = root.GetInteger("connectTimeoutMs");
+    this->client_config.connectTimeoutMs = root.GetInteger("connectTimeoutMs");
   }
   else {
-    config->client_config.connectTimeoutMs = 1000;
+    this->client_config.connectTimeoutMs = 1000;
   }
+
   if (root.ValueExists("region")) {
     auto region = root.GetString("region");
     auto regionEnum = Aws::Region::US_EAST_1;
@@ -63,21 +54,20 @@ bool TryLoadEc2DnsConfig(Aws::String file, Ec2DnsConfig *config) {
     MAYBE_SET_REGION("ap-southeast-2", AP_SOUTHEAST_2)
     MAYBE_SET_REGION("ap-northeast-1", AP_NORTHEAST_1)
     MAYBE_SET_REGION("sa-east-1", SA_EAST_1)
-    config->client_config.region = regionEnum;
+    this->client_config.region = regionEnum;
   }
   if (root.ValueExists("authentication_region")) {
-    config->client_config.authenticationRegion = root.GetString("authentication_region");
+    this->client_config.authenticationRegion = root.GetString("authentication_region");
   }
   if (root.ValueExists("endpoint_override")) {
-    config->client_config.endpointOverride = root.GetString("endpoint_override");
+    this->client_config.endpointOverride = root.GetString("endpoint_override");
   }
   if (root.ValueExists("use_ssl")) {
-    config->client_config.scheme =
+    this->client_config.scheme =
         root.GetBool("use_ssl") ? Aws::Http::Scheme::HTTPS : Aws::Http::Scheme::HTTP;
   }
-  if (root.ValueExists("instance_regex")) {
-    config->instance_regex = root.GetString("instance_regex");
-  }
+  TryLoadString(instance_regex)
+  TryLoadString(account_name)
   return true;
 }
 
@@ -156,7 +146,7 @@ bool Ec2DnsClient::_QueryInstanceById(const std::string &instanceId, std::string
 const std::string Ec2DnsClient::_GetHostname(const Model::Instance& instance) {
   auto regionCode = this->_GetRegionCode(this->m_config.client_config.region);
   auto az = instance.GetPlacement().GetAvailabilityZone();
-  auto account = "tcd";
+  auto account = this->m_config.account_name;
   auto instanceId = instance.GetInstanceId().substr(2);
   std::ostringstream oss;
   oss << regionCode << az[az.length() - 1] << "-" << account << "-" << instanceId
@@ -237,7 +227,7 @@ bool Ec2DnsClient::_Resolve(
   return false;
 }
 
-bool Ec2DnsClient::ResolveIp(const Aws::String &instanceId, Aws::String *ip) {
+bool Ec2DnsClient::TryResolveIp(const Aws::String &instanceId, Aws::String *ip) {
   this->m_lookupRequests->Increment();
   return this->_Resolve(
       instanceId,
@@ -245,7 +235,7 @@ bool Ec2DnsClient::ResolveIp(const Aws::String &instanceId, Aws::String *ip) {
       ip);
 }
 
-bool Ec2DnsClient::ResolveHostname(const std::string &ip, std::string *hostname) {
+bool Ec2DnsClient::TryResolveHostname(const std::string &ip, std::string *hostname) {
   this->m_reverseLookupRequests->Increment();
   return this->_Resolve(
       ip,

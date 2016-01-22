@@ -70,7 +70,7 @@ isc_result_t dlz_create(
   cbs.log(ISC_LOG_WARNING, "Creating EC2 client");
 
   Ec2DnsConfig dnsConfig;
-  TryLoadEc2DnsConfig("/etc/ec2dns.conf", &dnsConfig);
+  dnsConfig.TryLoad("/etc/ec2dns.conf");
 
   Logging::InitializeAWSLogging(
       Aws::MakeShared<Logging::DefaultLogSystem>(
@@ -168,7 +168,7 @@ isc_result_t dlz_lookup(
   }
 
   Aws::String ip;
-  auto success = state->client->ResolveIp(instanceId, &ip);
+  auto success = state->client->TryResolveIp(instanceId, &ip);
   if (success) {
     return state->callbacks.putrr(lookup, "A", 120, ip.c_str());
   }
