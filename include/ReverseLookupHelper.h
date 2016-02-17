@@ -12,7 +12,7 @@ public:
 
   bool InitializeReverseLookupZones(const std::string& vpcCidr);
   bool IsReverseLookupZone(const std::string& zone);
-  bool DoReverseLookup(const std::string& zone, const std::string& name, std::string *hostname);
+  bool DoReverseLookup(const std::string& zone, const std::string& name, const std::string &clientAddr, std::string *hostname);
 
 private:
   std::shared_ptr<Ec2DnsClient> m_dnsClient;

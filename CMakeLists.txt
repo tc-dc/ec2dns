@@ -20,6 +20,7 @@ include_directories("external/include")
 SET(SRCS
         src/Ec2DnsClient.cpp
         src/dlz_aws.cpp
+        src/RequestThrottler.cpp
         src/ReverseLookupHelper.cpp
         src/Stats.cpp)
 

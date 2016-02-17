@@ -212,6 +212,7 @@ void Ec2DnsClient::_InsertCacheNoLock(
 
 bool Ec2DnsClient::_Resolve(
     const std::string &key,
+    const std::string &clientAddr,
     const std::function<bool(const std::string&, std::string*)> valueFactory,
     std::string *value) {
   if (key.empty()) {
@@ -220,6 +221,10 @@ bool Ec2DnsClient::_Resolve(
   if (this->_CheckCache(key, value)) {
     return true;
   }
+  if (this->m_throttler->IsRequestThrottled(clientAddr, key)) {
+    return false;
+  }
+  this->m_throttler->OnMiss(key, clientAddr);
   if (valueFactory(key, value)) {
     this->_InsertCache(key, *value);
     return true;
@@ -227,18 +232,20 @@ bool Ec2DnsClient::_Resolve(
   return false;
 }
 
-bool Ec2DnsClient::TryResolveIp(const Aws::String &instanceId, Aws::String *ip) {
+bool Ec2DnsClient::TryResolveIp(const std::string &instanceId, const std::string& clientAddr, std::string *ip) {
   this->m_lookupRequests->Increment();
   return this->_Resolve(
       instanceId,
+      clientAddr,
       std::bind(&Ec2DnsClient::_QueryInstanceById, this, _1, _2),
       ip);
 }
 
-bool Ec2DnsClient::TryResolveHostname(const std::string &ip, std::string *hostname) {
+bool Ec2DnsClient::TryResolveHostname(const std::string &ip, const std::string &clientAddr, std::string *hostname) {
   this->m_reverseLookupRequests->Increment();
   return this->_Resolve(
       ip,
+      clientAddr,
       std::bind(&Ec2DnsClient::_QueryInstanceByIp, this, _1, _2),
       hostname);
 }
@@ -246,6 +253,7 @@ bool Ec2DnsClient::TryResolveHostname(const std::string &ip, std::string *hostna
 void Ec2DnsClient::_RefreshInstanceData() {
   while (true) {
     this->_RefreshInstanceDataImpl();
+    this->m_throttler->Trim();
     std::this_thread::sleep_for(
         std::chrono::seconds(this->m_config.refresh_interval));
   }

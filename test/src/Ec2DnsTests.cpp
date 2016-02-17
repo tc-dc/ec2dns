@@ -29,7 +29,7 @@ TEST(TestEc2DnsClient, TestEc2DnsClientResolveIp) {
 
   Ec2DnsClient dnsClient(&_logcb, ptr, "test-zone", Ec2DnsConfig(), std::make_shared<StatsReceiver>());
   std::string ip;
-  bool ret = dnsClient.TryResolveIp("i-1234567", &ip);
+  bool ret = dnsClient.TryResolveIp("i-1234567", "127.0.0.1", &ip);
   ASSERT_TRUE(ret);
   ASSERT_EQ(ip, "10.1.2.3");
 }
@@ -41,7 +41,7 @@ TEST(TestEc2DnsClient, TestEc2DnsClientResolveHostname) {
 
   Ec2DnsClient dnsClient(&_logcb, ptr, "test-zone", Ec2DnsConfig(), std::make_shared<StatsReceiver>());
   std::string hostname;
-  bool ret = dnsClient.TryResolveHostname("10.1.2.3", &hostname);
+  bool ret = dnsClient.TryResolveHostname("10.1.2.3", "127.0.0.1", &hostname);
   ASSERT_TRUE(ret);
   ASSERT_EQ(hostname, "ue1a-tcd-1234567.test-zone.");
 }

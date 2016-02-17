@@ -19,6 +19,7 @@
 #include "aws/core/utils/logging/DefaultLogSystem.h"
 
 #include <arpa/inet.h>
+#include <dlz_minimal.h>
 
 using namespace Aws::EC2;
 using namespace Aws::Utils;
@@ -33,6 +34,35 @@ struct dlz_state {
     std::string zone_name;
     DlzCallbacks callbacks;
 };
+
+isc_result_t get_src_address(dns_clientinfomethods_t *methods,
+    dns_clientinfo_t *clientinfo, std::string *srcAddress) {
+  isc_result_t ret;
+  if (methods != NULL && methods->version - methods->age >= DNS_CLIENTINFOMETHODS_VERSION) {
+    isc_sockaddr_t *addr;
+    if ((ret = methods->sourceip(clientinfo, &addr)) != ISC_R_SUCCESS) {
+      return ret;
+    }
+    char buf[100];
+    const char* retAddr;
+    switch (addr->type.sa.sa_family) {
+      case AF_INET:
+        retAddr = inet_ntop(AF_INET, &addr->type.sin.sin_addr, buf, sizeof(buf));
+        break;
+      case AF_INET6:
+        retAddr = inet_ntop(AF_INET6, &addr->type.sin6.sin6_addr, buf, sizeof(buf));
+        break;
+      default:
+        return ISC_R_FAILURE;
+    }
+    if (retAddr == NULL) {
+      return ISC_R_FAILURE;
+    }
+    *srcAddress = buf;
+    return ISC_R_SUCCESS;
+  }
+  return ISC_R_FAILURE;
+}
 
 extern "C" {
 
@@ -150,9 +180,10 @@ isc_result_t dlz_lookup(
     return ISC_R_NOTFOUND;
   }
   if (state->rl_helper->IsReverseLookupZone(zone)) {
-    std::string hostname;
-    if (state->rl_helper->DoReverseLookup(zone, name, &hostname)) {
-      state->callbacks.putrr(lookup, "PTR", 120, hostname.c_str());
+    std::string hostName, clientAddr;
+    get_src_address(methods, clientinfo, &clientAddr);
+    if (state->rl_helper->DoReverseLookup(zone, name, clientAddr, &hostName)) {
+      state->callbacks.putrr(lookup, "PTR", 120, hostName.c_str());
       return ISC_R_SUCCESS;
     }
     else {
@@ -167,8 +198,9 @@ isc_result_t dlz_lookup(
     return ISC_R_NOTFOUND;
   }
 
-  Aws::String ip;
-  auto success = state->client->TryResolveIp(instanceId, &ip);
+  std::string ip, clientAddr;
+  get_src_address(methods, clientinfo, &clientAddr);
+  auto success = state->client->TryResolveIp(instanceId, clientAddr, &ip);
   if (success) {
     return state->callbacks.putrr(lookup, "A", 120, ip.c_str());
   }

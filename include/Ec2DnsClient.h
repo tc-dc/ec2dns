@@ -6,7 +6,9 @@
 #define AWSDNS_EC2DNSCLIENT_H
 
 #include "dlz_minimal.h"
+#include "CacheEntry.h"
 #include "Stats.h"
+#include "RequestThrottler.h"
 #include "aws/core/utils/json/JsonSerializer.h"
 #include "aws/ec2/EC2Client.h"
 #include "aws/ec2/model/DescribeInstancesRequest.h"
@@ -66,7 +68,8 @@ public:
     const Ec2DnsConfig config,
     std::shared_ptr<StatsReceiver> statsReceiver
   )
-    : m_config(config), m_log(logCb), m_zoneName(zoneName), m_ec2Client(ec2Client),
+    : m_config(config), m_ec2Client(ec2Client), m_log(logCb), m_throttler(new RequestThrottler()),
+      m_zoneName(zoneName),
       m_cacheHits   (statsReceiver->Create("cache_hits")),
       m_cacheMisses (statsReceiver->Create("cache_misses")),
       m_apiFailures (statsReceiver->Create("api_failure")),
@@ -81,34 +84,10 @@ public:
     this->m_refreshThread = std::thread(&Ec2DnsClient::_RefreshInstanceData, this);
   }
 
-  bool TryResolveIp(const Aws::String &instanceId, Aws::String *ip);
-  bool TryResolveHostname(const std::string &ip, std::string *hostname);
+  bool TryResolveIp(const std::string &instanceId, const std::string &clientAddr, std::string *ip);
+  bool TryResolveHostname(const std::string &ip, const std::string &clientAddr, std::string *hostname);
 
 private:
-  template<class T>
-  class CacheEntry {
-  public:
-      CacheEntry() { }
-
-      CacheEntry(const T &item, const time_point<steady_clock> expiresOn):
-        m_item(item), m_expiresOn(expiresOn) { }
-
-      T GetItem() {
-        return m_item;
-      }
-
-      bool IsValid() {
-        return IsValid(steady_clock::now());
-      }
-
-      bool IsValid(const time_point<steady_clock> now) {
-        return now < m_expiresOn;
-      }
-  private:
-      T m_item;
-      time_point<steady_clock> m_expiresOn;
-  };
-
   void _RefreshInstanceData();
   void _RefreshInstanceDataImpl();
 
@@ -133,20 +112,20 @@ private:
   void _InsertCache(const std::string& instanceId, const std::string& ip, const time_point<steady_clock> expiresOn);
   void _InsertCacheNoLock(const std::string& instanceId, const std::string& ip, const time_point<steady_clock> expiresOn);
 
-  bool _Resolve(const std::string &key, const std::function<bool(const std::string&, std::string*)> valueFactory, std::string *value);
+  bool _Resolve(const std::string &key, const std::string &clientAddr, const std::function<bool(const std::string&, std::string*)> valueFactory, std::string *value);
   bool _QueryInstanceById(const std::string& instanceId, std::string *ip);
   bool _QueryInstanceByIp(const std::string& ip, std::string *hostname);
 
   bool _DescribeInstances(const std::string& instanceId, const std::string& ip, Aws::Vector<Model::Instance> *instances);
 
-  Ec2DnsConfig m_config;
-  log_t *m_log;
-  std::string m_zoneName;
-  std::shared_ptr<EC2Client> m_ec2Client;
-
   std::unordered_map<Aws::String, CacheEntry<Aws::String>> m_cache;
   std::mutex m_cacheLock;
+  Ec2DnsConfig m_config;
+  std::shared_ptr<EC2Client> m_ec2Client;
+  log_t *m_log;
   std::thread m_refreshThread;
+  std::unique_ptr<RequestThrottler> m_throttler;
+  std::string m_zoneName;
 
   std::shared_ptr<Stat> m_cacheHits, m_cacheMisses,
       m_apiFailures, m_apiRequests, m_apiSuccesses,
