@@ -1,5 +1,7 @@
 #include <stdarg.h>
+#include <math.h>
 #include <memory>
+#include <random>
 #include <unordered_set>
 
 #include <boost/algorithm/string/classification.hpp>
@@ -10,6 +12,7 @@
 #include "dlz_minimal.h"
 #include "Ec2DnsClient.h"
 #include "HostMatcher.h"
+#include "KRandom.h"
 #include "ReverseLookupHelper.h"
 #include "Stats.h"
 
@@ -32,6 +35,8 @@ struct dlz_state {
     std::shared_ptr<StatsReceiver> stats_receiver;
     std::string soa_data;
     std::string zone_name;
+    std::string autoscaler_zone_name;
+    size_t num_asg_records;
     DlzCallbacks callbacks;
 };
 
@@ -113,24 +118,30 @@ isc_result_t dlz_create(
           "log", (Logging::LogLevel)dnsConfig.log_level, dnsConfig.log_path));
 
   std::shared_ptr<EC2Client> ec2Client;
+  std::shared_ptr<AutoScalingClient> asgClient;
   if (!dnsConfig.aws_access_key.empty() && !dnsConfig.aws_secret_key.empty()) {
     Aws::Auth::AWSCredentials creds(
         dnsConfig.aws_access_key,
         dnsConfig.aws_secret_key);
     ec2Client = std::make_shared<EC2Client>(creds, dnsConfig.client_config);
+    asgClient = std::make_shared<AutoScalingClient>(creds, dnsConfig.client_config);
   }
   else {
     ec2Client = std::make_shared<EC2Client>(dnsConfig.client_config);
+    asgClient = std::make_shared<AutoScalingClient>(dnsConfig.client_config);
   }
 
   auto state = new dlz_state();
   state->stats_receiver = std::make_shared<StatsReceiver>();
+  state->num_asg_records = dnsConfig.num_asg_records;
   state->client = std::make_shared<Ec2DnsClient>(
           cbs.log,
           ec2Client,
+          asgClient,
           dnsConfig,
           state->stats_receiver);
   state->zone_name = argv[1];
+  state->autoscaler_zone_name = "asg." + state->zone_name;
   state->callbacks = cbs;
   state->matcher = std::unique_ptr<HostMatcher>(new HostMatcher(dnsConfig));
   state->rl_helper = std::unique_ptr<ReverseLookupHelper>(new ReverseLookupHelper(state->client));
@@ -161,7 +172,12 @@ void dlz_destroy(void *dbdata) {
 
 isc_result_t dlz_findzonedb(void *dbdata, const char *name) {
   auto state = static_cast<dlz_state *>(dbdata);
+  // Are we doing a plain old instance lookup?
   if (StringUtils::CaselessCompare(state->zone_name.c_str(), name)) {
+    return ISC_R_SUCCESS;
+  }
+  // Are we doing an autoscaler lookup?
+  if (StringUtils::CaselessCompare(state->autoscaler_zone_name.c_str(), name)) {
     return ISC_R_SUCCESS;
   }
   // Are we doing a reverse lookup?
@@ -196,10 +212,25 @@ isc_result_t dlz_lookup(
     }
   }
 
+  if (StringUtils::CaselessCompare(state->autoscaler_zone_name.c_str(), zone)) {
+    std::string clientAddr;
+    std::vector<std::string> nodes;
+    get_src_address(methods, clientinfo, &clientAddr);
+    if (state->client->TryResolveAutoscaler(name, clientAddr, &nodes)) {
+      size_t maxNodes = std::min(nodes.size(), state->num_asg_records);
+      for (const auto&& node : k_random<std::string>(nodes, maxNodes)) {
+        state->callbacks.putrr(lookup, "A", 120, node.c_str());
+      }
+      return ISC_R_SUCCESS;
+    }
+    else {
+      return ISC_R_NOTFOUND;
+    }
+  }
+
   std::string instanceId, awsZone;
   bool matched = state->matcher->TryMatch(name, &instanceId, &awsZone);
   if (!matched || instanceId.empty() || awsZone.empty()) {
-    state->callbacks.log(ISC_LOG_ERROR, "Invalid format for name %s", name);
     return ISC_R_NOTFOUND;
   }
 

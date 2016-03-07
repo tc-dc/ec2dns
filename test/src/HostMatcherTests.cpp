@@ -4,7 +4,7 @@
 #include "Ec2DnsClient.h"
 
 TEST(TestHostMatcher, TestMatchesValidHostname) {
-  auto config = Ec2DnsConfig();
+  auto config = Ec2DnsConfig("tc", "10.0.0.0/23", "aws.test");
   auto hm = HostMatcher(config);
 
   std::string instanceId, awsRegion;
@@ -16,7 +16,7 @@ TEST(TestHostMatcher, TestMatchesValidHostname) {
 }
 
 TEST(TestHostMatcher, TestFailsInvalidHostname) {
-  auto config = Ec2DnsConfig();
+  auto config = Ec2DnsConfig("tc", "10.0.0.0/23", "aws.test");
   auto hm = HostMatcher(config);
 
   std::string instanceId, awsRegion;

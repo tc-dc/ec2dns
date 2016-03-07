@@ -21,13 +21,13 @@ RUN cd /tmp \
 
 # Build the aws-sdk (you'll need mucho-ramo)
 RUN cd /tmp \
- && git clone https://github.com/tellapart/aws-sdk-cpp.git \
+ && git clone https://github.com/aws/aws-sdk-cpp.git \
  && cd /tmp/aws-sdk-cpp \
- && git checkout c33664ec400d477422905320ce26a32b623a5b71
+ && git checkout b2162900c1841d95595fdb2ed744b58db83ace36
 RUN mkdir /tmp/aws-sdk-cpp/build \
  && cd /tmp/aws-sdk-cpp/build \
  && /opt/cmake-3.4.1-Linux-x86_64/bin/cmake \
-    -DBUILD_ONLY="aws-cpp-sdk-ec2" \
+    -DBUILD_ONLY="aws-cpp-sdk-ec2;aws-cpp-sdk-autoscaling" \
     -DSTATIC_LINKING=1 \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_FLAGS=-fPIC \
@@ -52,7 +52,7 @@ RUN mkdir /tmp/ec2dns/build \
 RUN cd /tmp/ec2dns/build \
  && fpm -t rpm \
         -s dir \
-        --version 1.8 \
+        --version 1.9 \
         -n ec2dns \
         --prefix /var/named \
         --after-install /tmp/ec2dns/docker/rpm/scripts/postinstall.sh \

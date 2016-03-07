@@ -11,6 +11,7 @@ find_package(Boost 1.53 COMPONENTS regex coroutine thread system context REQUIRE
 
 find_library(AWS_SDK_LIB_CORE aws-cpp-sdk-core PATHS ${AWS_SDK_PATHS})
 find_library(AWS_SDK_LIB_EC2 aws-cpp-sdk-ec2 PATHS ${AWS_SDK_PATHS})
+find_library(AWS_SDK_LIB_ASG aws-cpp-sdk-autoscaling PATHS, ${AWS_SDK_PATHS})
 
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 include_directories(SYSTEM ${AWS_SDK_INCLUDE_PATH})
@@ -18,13 +19,14 @@ include_directories("include")
 include_directories("external/include")
 
 SET(SRCS
+        src/KRandom.cpp
         src/Ec2DnsClient.cpp
         src/dlz_aws.cpp
         src/RequestThrottler.cpp
         src/ReverseLookupHelper.cpp
         src/Stats.cpp)
 
-SET(LIBS ${AWS_SDK_LIB_EC2} ${AWS_SDK_LIB_CORE} curl ssl crypto ${Boost_LIBRARIES})
+SET(LIBS ${AWS_SDK_LIB_EC2} ${AWS_SDK_LIB_CORE} ${AWS_SDK_LIB_ASG} curl ssl crypto ${Boost_LIBRARIES})
 
 add_library(ec2dns SHARED ${SRCS})
 
