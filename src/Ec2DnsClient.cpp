@@ -150,7 +150,7 @@ const std::string Ec2DnsClient::_GetHostname(const Model::Instance& instance) {
   auto instanceId = instance.GetInstanceId().substr(2);
   std::ostringstream oss;
   oss << regionCode << az[az.length() - 1] << "-" << account << "-" << instanceId
-      << "." << this->m_zoneName << ".";
+      << "." << this->m_config.zone_name << ".";
   return oss.str();
 }
 

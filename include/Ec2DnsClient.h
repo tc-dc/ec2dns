@@ -32,14 +32,16 @@ struct DlzCallbacks {
 
 class Ec2DnsConfig {
 public:
-    Ec2DnsConfig()
+    Ec2DnsConfig(const std::string& accountName, const std::string& vpcCidr, const std::string &zoneName)
       : client_config(),
         instance_regex(DEFAULT_INSTANCE_REGEX),
-        account_name("tcd"),
+        account_name(accountName),
         log_level(0),
         log_path("ec2_dns_aws_"),
         refresh_interval(60),
-        instance_timeout(120)
+        instance_timeout(120),
+        vpc_cidr(vpcCidr),
+        zone_name(zoneName)
     { }
 
     Aws::String aws_access_key;
@@ -56,6 +58,9 @@ public:
     int refresh_interval;
     int instance_timeout;
 
+    std::string vpc_cidr;
+    std::string zone_name;
+
     bool TryLoad(const std::string& file);
 };
 
@@ -64,12 +69,10 @@ public:
   Ec2DnsClient(
     log_t *logCb,
     const std::shared_ptr<EC2Client> ec2Client,
-    const std::string zoneName,
     const Ec2DnsConfig config,
     std::shared_ptr<StatsReceiver> statsReceiver
   )
     : m_config(config), m_ec2Client(ec2Client), m_log(logCb), m_throttler(new RequestThrottler()),
-      m_zoneName(zoneName),
       m_cacheHits   (statsReceiver->Create("cache_hits")),
       m_cacheMisses (statsReceiver->Create("cache_misses")),
       m_apiFailures (statsReceiver->Create("api_failure")),

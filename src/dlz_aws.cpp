@@ -84,6 +84,7 @@ b9_add_helper(
 }
 
 isc_result_t dlz_create(
+    /* argv is _, zone, vpc_cidr, account_name */
     const char *dlzname, unsigned int argc, char *argv[],
     void **dbdata, ...) {
 
@@ -97,9 +98,14 @@ isc_result_t dlz_create(
   }
   va_end(ap);
 
+  if (argc < 4) {
+    cbs.log(ISC_LOG_CRITICAL, "Unable to create ec2dns client, "
+        "expected args [zone] [vpc_cidr] [account_name]");
+    return ISC_R_FAILURE;
+  }
   cbs.log(ISC_LOG_WARNING, "Creating EC2 client");
 
-  Ec2DnsConfig dnsConfig;
+  Ec2DnsConfig dnsConfig(argv[3], argv[2], argv[1]);
   dnsConfig.TryLoad("/etc/ec2dns.conf");
 
   Logging::InitializeAWSLogging(
@@ -122,7 +128,6 @@ isc_result_t dlz_create(
   state->client = std::make_shared<Ec2DnsClient>(
           cbs.log,
           ec2Client,
-          std::string(argv[1]),
           dnsConfig,
           state->stats_receiver);
   state->zone_name = argv[1];
