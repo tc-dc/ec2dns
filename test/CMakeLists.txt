@@ -6,6 +6,7 @@ include_directories("include")
 set(TEST_SRCS
         external/src/gtest/gtest-all.cc
         external/src/gmock/gmock-all.cc
+        src/KRandomTests.cpp
         src/RunTests.cpp
         src/HostMatcherTests.cpp
         src/ReverseLookupHelperTests.cpp

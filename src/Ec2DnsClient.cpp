@@ -27,6 +27,8 @@ bool Ec2DnsConfig::TryLoad(const std::string& file) {
   TryLoadString(aws_secret_key)
   TryLoadInteger(log_level)
   TryLoadString(log_path)
+  TryLoadInteger(num_asg_records)
+  TryLoadString(asg_dns_tag)
 
   if (root.ValueExists("requestTimeoutMs")) {
     this->client_config.requestTimeoutMs = root.GetInteger("requestTimeoutMs");
@@ -85,41 +87,31 @@ bool Ec2DnsClient::_DescribeInstances(
   }
   else {
     req.AddFilters(Aws::EC2::Model::Filter()
-            .WithName("private-ip-address")
-            .AddValues(ip));
+                       .WithName("private-ip-address")
+                       .AddValues(ip));
   }
 
-  std::vector<Aws::EC2::Model::Instance> allInstances;
-  std::string nextToken;
-  do {
-    this->m_apiRequests->Increment();
-    auto ret = this->m_ec2Client->DescribeInstances(req);
-    this->m_log(ISC_LOG_INFO, "ec2dns - API Request complete");
-    if (!ret.IsSuccess()) {
-      this->m_apiFailures->Increment();
-      auto errorMessage = ret.GetError().GetMessage();
-      this->m_log(
-          ISC_LOG_ERROR,
-          "ec2dns - API request DescribeInstances failed with error: %s",
-          errorMessage.c_str());
-      return false;
-    }
-    this->m_apiSuccesses->Increment();
+  std::vector<Aws::EC2::Model::DescribeInstancesResponse> responses;
+  bool success = this->_CallApi<
+      Aws::EC2::Model::DescribeInstancesRequest,
+      Aws::EC2::Model::DescribeInstancesResponse,
+      Aws::EC2::EC2Errors
+  >("DescribeInstances", req, std::bind(&EC2Client::DescribeInstances, this->m_ec2Client, _1), &responses);
 
-    auto result = ret.GetResult();
-    auto reservs = result.GetReservations();
-    for (auto &r : reservs) {
-      auto resInstances = r.GetInstances();
-      allInstances.insert(
-          allInstances.end(),
+  if (!success) {
+    return false;
+  }
+
+  for (const auto &resp : responses) {
+    const auto reservs = resp.GetReservations();
+    for (const auto &r : reservs) {
+      const auto resInstances = r.GetInstances();
+      instances->insert(
+          instances->end(),
           resInstances.begin(),
           resInstances.end());
     }
-    nextToken = result.GetNextToken();
-    req.SetNextToken(nextToken);
-  } while (!nextToken.empty());
-
-  *instances = allInstances;
+  }
   return true;
 }
 
@@ -143,10 +135,10 @@ bool Ec2DnsClient::_QueryInstanceById(const std::string &instanceId, std::string
   return false;
 }
 
-const std::string Ec2DnsClient::_GetHostname(const Model::Instance& instance) {
-  auto regionCode = this->_GetRegionCode(this->m_config.client_config.region);
-  auto az = instance.GetPlacement().GetAvailabilityZone();
-  auto account = this->m_config.account_name;
+const std::string Ec2DnsClient::_GetHostname(const Aws::EC2::Model::Instance& instance) {
+  const auto& regionCode = this->_GetRegionCode(this->m_config.client_config.region);
+  const auto& az = instance.GetPlacement().GetAvailabilityZone();
+  const auto& account = this->m_config.account_name;
   auto instanceId = instance.GetInstanceId().substr(2);
   std::ostringstream oss;
   oss << regionCode << az[az.length() - 1] << "-" << account << "-" << instanceId
@@ -173,41 +165,8 @@ bool Ec2DnsClient::_QueryInstanceByIp(const std::string &ip, std::string *hostna
   return false;
 }
 
-bool Ec2DnsClient::_CheckCache(const std::string &instanceId, std::string *ip) {
-  std::lock_guard<std::mutex> lock(this->m_cacheLock);
-  auto found = this->m_cache.find(instanceId);
-  if (found == this->m_cache.end()) {
-    this->m_cacheMisses->Increment();
-    return false;
-  }
-  else {
-    *ip = found->second.GetItem();
-    this->m_cacheHits->Increment();
-    return true;
-  }
-}
-
-void Ec2DnsClient::_InsertCache(
-    const std::string &instanceId,
-    const std::string &ip) {
-  auto expiresOn = std::chrono::steady_clock::now() + std::chrono::seconds(this->m_config.instance_timeout);
-  this->_InsertCache(instanceId, ip, expiresOn);
-}
-
-void Ec2DnsClient::_InsertCache(
-    const std::string &instanceId,
-    const std::string &ip,
-    const std::chrono::time_point<std::chrono::steady_clock> expiresOn) {
-
-  std::lock_guard<std::mutex> lock(this->m_cacheLock);
-  this->_InsertCacheNoLock(instanceId, ip, expiresOn);
-}
-
-void Ec2DnsClient::_InsertCacheNoLock(
-    const std::string &instanceId,
-    const std::string &ip,
-    const std::chrono::time_point<std::chrono::steady_clock> expiresOn) {
-  this->m_cache[instanceId] = CacheEntry<Aws::String>(ip, expiresOn);
+bool Ec2DnsClient::_CheckHostCache(const std::string &instanceId, std::string *ip) {
+  return this->m_hostCache.TryGet(instanceId, ip);
 }
 
 bool Ec2DnsClient::_Resolve(
@@ -218,7 +177,7 @@ bool Ec2DnsClient::_Resolve(
   if (key.empty()) {
     return false;
   }
-  if (this->_CheckCache(key, value)) {
+  if (this->_CheckHostCache(key, value)) {
     return true;
   }
   if (this->m_throttler->IsRequestThrottled(clientAddr, key)) {
@@ -226,7 +185,7 @@ bool Ec2DnsClient::_Resolve(
   }
   this->m_throttler->OnMiss(key, clientAddr);
   if (valueFactory(key, value)) {
-    this->_InsertCache(key, *value);
+    this->m_hostCache.Insert(key, *value);
     return true;
   }
   return false;
@@ -250,6 +209,11 @@ bool Ec2DnsClient::TryResolveHostname(const std::string &ip, const std::string &
       hostname);
 }
 
+bool Ec2DnsClient::TryResolveAutoscaler(const std::string &name, const std::string &clientAddr, std::vector<std::string> *nodes) {
+  this->m_autoscalerRequests->Increment();
+  return this->m_asgCache.TryGet(name, nodes);
+}
+
 void Ec2DnsClient::_RefreshInstanceData() {
   while (true) {
     this->_RefreshInstanceDataImpl();
@@ -266,26 +230,62 @@ void Ec2DnsClient::_RefreshInstanceDataImpl() {
     this->m_log(ISC_LOG_ERROR, "ec2dns - Unable to refresh cache.");
     return;
   }
+  this->_RefreshAutoscalerDataImpl(instances);
 
   {
-    std::lock_guard<std::mutex>(this->m_cacheLock);
-    std::vector<Aws::String> toDelete;
-    time_point<steady_clock> now = steady_clock::now();
-    // Delete expired entries
-    for (auto it = this->m_cache.begin(); it != this->m_cache.end(); ++it) {
-      if (!it->second.IsValid(now)) {
-        toDelete.push_back(it->first);
-      }
-    }
-    for (auto it = toDelete.begin(); it != toDelete.end(); ++it) {
-      this->m_cache.erase(*it);
-    }
+    auto&& lock = this->m_hostCache.GetLock();
+    this->m_hostCache.Trim();
 
     auto expiresOn = std::chrono::steady_clock::now() + std::chrono::seconds(this->m_config.instance_timeout);
-    for (auto it = instances.begin(); it != instances.end(); ++it) {
-      this->_InsertCacheNoLock(it->GetInstanceId(), it->GetPrivateIpAddress(), expiresOn);
-      this->_InsertCacheNoLock(it->GetPrivateIpAddress(), this->_GetHostname(*it), expiresOn);
+    for (const auto& it : instances) {
+      this->m_hostCache.InsertNoLock(it.GetInstanceId(), it.GetPrivateIpAddress(), expiresOn);
+      this->m_hostCache.InsertNoLock(it.GetPrivateIpAddress(), this->_GetHostname(it), expiresOn);
     }
+    UNUSED(lock);
   }
   this->m_log(ISC_LOG_INFO, "ec2dns - Refreshed cache with %d instances", instances.size());
+}
+
+void Ec2DnsClient::_RefreshAutoscalerDataImpl(const Aws::Vector<Aws::EC2::Model::Instance>& instances) {
+  auto req = Aws::AutoScaling::Model::DescribeAutoScalingGroupsRequest();
+  std::vector<Aws::AutoScaling::Model::DescribeAutoScalingGroupsResult> results;
+  bool success = this->_CallApi<
+      Aws::AutoScaling::Model::DescribeAutoScalingGroupsRequest,
+      Aws::AutoScaling::Model::DescribeAutoScalingGroupsResult,
+      Aws::AutoScaling::AutoScalingErrors
+  >("DescribeAutoScalingGroups", req,
+    std::bind(&AutoScalingClient::DescribeAutoScalingGroups, this->m_asgClient, _1), &results);
+
+  if (!success) {
+    return;
+  }
+
+  std::unordered_map<std::string, std::string> instanceToIpLookup;
+  for (const auto &i : instances) {
+    instanceToIpLookup[i.GetInstanceId()] = i.GetPrivateIpAddress();
+  }
+
+  auto expiresOn = std::chrono::steady_clock::now() + std::chrono::seconds(10 * 60);
+  for (const auto &resp : results) {
+    for (const auto &asg : resp.GetAutoScalingGroups()) {
+      for (const auto &tag : asg.GetTags()) {
+        if (tag.GetKey() == this->m_config.asg_dns_tag) {
+          const auto& dnsAlias = tag.GetValue();
+          const auto& asgInstances = asg.GetInstances();
+          std::vector<std::string> instanceIps;
+          for (const auto &i : asgInstances) {
+            if (i.GetLifecycleState() == Aws::AutoScaling::Model::LifecycleState::InService
+                && i.GetHealthStatus() == "Healthy") {
+              auto instanceInfo = instanceToIpLookup.find(i.GetInstanceId());
+              if (instanceInfo != instanceToIpLookup.end()) {
+                instanceIps.push_back(instanceInfo->second);
+              }
+            }
+          }
+          this->m_asgCache.Insert(dnsAlias, instanceIps, expiresOn);
+        }
+      }
+    }
+  }
+  this->m_asgCache.Trim();
 }
