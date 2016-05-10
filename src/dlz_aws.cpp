@@ -35,6 +35,7 @@ struct dlz_state {
     std::shared_ptr<StatsReceiver> stats_receiver;
     std::string soa_data;
     std::string zone_name;
+    std::string alt_zone_name;
     std::string autoscaler_zone_name;
     size_t num_asg_records;
     DlzCallbacks callbacks;
@@ -141,6 +142,11 @@ isc_result_t dlz_create(
           dnsConfig,
           state->stats_receiver);
   state->zone_name = argv[1];
+  if (state->zone_name == "aws.ue1.tcdc.io") {
+    state->alt_zone_name = "aws.tcdc.io";
+  } else {
+    state->alt_zone_name = state->zone_name;
+  }
   state->autoscaler_zone_name = "asg." + state->zone_name;
   state->callbacks = cbs;
   state->matcher = std::unique_ptr<HostMatcher>(new HostMatcher(dnsConfig));
@@ -174,6 +180,9 @@ isc_result_t dlz_findzonedb(void *dbdata, const char *name) {
   auto state = static_cast<dlz_state *>(dbdata);
   // Are we doing a plain old instance lookup?
   if (StringUtils::CaselessCompare(state->zone_name.c_str(), name)) {
+    return ISC_R_SUCCESS;
+  }
+  if (StringUtils::CaselessCompare(state->alt_zone_name.c_str(), name)) {
     return ISC_R_SUCCESS;
   }
   // Are we doing an autoscaler lookup?
