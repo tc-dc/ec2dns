@@ -42,7 +42,7 @@ typedef uint32_t dns_ttl_t;
 #ifdef __APPLE__
 #define DLZ_DLOPEN_VERSION 3
 #else
-#define DLZ_DLOPEN_VERSION 2
+#define DLZ_DLOPEN_VERSION 3
 #endif
 
 /* return this in flags to dlz_version() if thread safe */
