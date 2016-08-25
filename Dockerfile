@@ -52,7 +52,7 @@ RUN mkdir /tmp/ec2dns/build \
 RUN cd /tmp/ec2dns/build \
  && fpm -t rpm \
         -s dir \
-        --version 1.9 \
+        --version 1.13 \
         -n ec2dns \
         --prefix /var/named \
         --after-install /tmp/ec2dns/docker/rpm/scripts/postinstall.sh \

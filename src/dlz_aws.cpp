@@ -212,6 +212,14 @@ isc_result_t dlz_lookup(
     }
   }
 
+  if (strlen(name) > 3 && strncmp(name, "ip-", 3) == 0) {
+    std::string sname(name);
+    std::replace(sname.begin(), sname.end(), '-', '.');
+    sname = sname.substr(3);
+    state->callbacks.putrr(lookup, "A", 120, sname.c_str());
+    return ISC_R_SUCCESS;
+  }
+
   if (StringUtils::CaselessCompare(state->autoscaler_zone_name.c_str(), zone)) {
     std::string clientAddr;
     std::vector<std::string> nodes;
