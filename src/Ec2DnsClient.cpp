@@ -70,6 +70,7 @@ bool Ec2DnsConfig::TryLoad(const std::string& file) {
   }
   TryLoadString(instance_regex)
   TryLoadString(account_name)
+  TryLoadInteger(request_batch_size)
   return true;
 }
 
@@ -79,6 +80,7 @@ bool Ec2DnsClient::_DescribeInstances(
     Aws::Vector<Aws::EC2::Model::Instance> *instances) {
 
   Aws::EC2::Model::DescribeInstancesRequest req;
+  req.SetMaxResults(this->m_config.request_batch_size);
   if (instanceId.empty() && ip.empty()) {
     this->m_log(ISC_LOG_INFO, "ec2dns - Getting all instances");
   }

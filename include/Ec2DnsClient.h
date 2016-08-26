@@ -48,7 +48,8 @@ public:
         vpc_cidr(vpcCidr),
         zone_name(zoneName),
         num_asg_records(4),
-        asg_dns_tag("twitter:aws:dns-alias")
+        asg_dns_tag("twitter:aws:dns-alias"),
+        request_batch_size(200)
     { }
 
     Aws::String aws_access_key;
@@ -70,6 +71,8 @@ public:
 
     size_t num_asg_records;
     std::string asg_dns_tag;
+
+    long request_batch_size;
 
     bool TryLoad(const std::string& file);
 };
