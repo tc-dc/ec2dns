@@ -9,9 +9,9 @@ RUN curl https://cmake.org/files/v3.4/cmake-3.4.1-Linux-x86_64.tar.gz -o /opt/cm
 
 ENV CC=/usr/bin/clang CXX=/usr/bin/clang++
 
+COPY external/boost_1_60_0.tar.bz2 /tmp/boost.tar.bz2
 # Install boost
 RUN cd /tmp \
- && curl https://s3.amazonaws.com/tcdc-repo/packages/boost_1_60_0.tar.bz2 -o boost.tar.bz2 \
  && tar -xvf boost.tar.bz2 > /dev/null \
  && cd boost_1_60_0 \
  && ./bootstrap.sh \
@@ -19,15 +19,17 @@ RUN cd /tmp \
     --with-regex --with-coroutine --with-system --with-thread --with-context \
     -j4 --layout=tagged threading=multi link=static install
 
+RUN yum install -y libuuid-devel
+
 # Build the aws-sdk (you'll need mucho-ramo)
 RUN cd /tmp \
  && git clone https://github.com/aws/aws-sdk-cpp.git \
  && cd /tmp/aws-sdk-cpp \
- && git checkout b2162900c1841d95595fdb2ed744b58db83ace36
+ && git checkout cfd293eef7ab6698794be652815c8c71bf955c1b
 RUN mkdir /tmp/aws-sdk-cpp/build \
  && cd /tmp/aws-sdk-cpp/build \
  && /opt/cmake-3.4.1-Linux-x86_64/bin/cmake \
-    -DBUILD_ONLY="aws-cpp-sdk-ec2;aws-cpp-sdk-autoscaling" \
+    -DBUILD_ONLY="ec2;autoscaling" \
     -DSTATIC_LINKING=1 \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_FLAGS=-fPIC \
@@ -48,11 +50,12 @@ RUN mkdir /tmp/ec2dns/build \
     /tmp/ec2dns \
  && make -j4 ec2dns
 
+ENV EC2DNS_VERSION=1.12
 # make an rpm
 RUN cd /tmp/ec2dns/build \
  && fpm -t rpm \
         -s dir \
-        --version 1.13 \
+        --version ${EC2DNS_VERSION} \
         -n ec2dns \
         --prefix /var/named \
         --after-install /tmp/ec2dns/docker/rpm/scripts/postinstall.sh \

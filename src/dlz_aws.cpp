@@ -16,6 +16,7 @@
 #include "ReverseLookupHelper.h"
 #include "Stats.h"
 
+#include "aws/core/Aws.h"
 #include "aws/core/auth/AWSCredentialsProvider.h"
 #include "aws/core/utils/StringUtils.h"
 #include "aws/core/utils/logging/AWSLogging.h"
@@ -113,6 +114,11 @@ isc_result_t dlz_create(
   Ec2DnsConfig dnsConfig(argv[3], argv[2], argv[1]);
   dnsConfig.TryLoad("/etc/ec2dns.conf");
 
+  Aws::SDKOptions options;
+  options.loggingOptions.logLevel = (Logging::LogLevel)dnsConfig.log_level;
+  options.cryptoOptions.initAndCleanupOpenSSL = false;
+  Aws::InitAPI(options);
+
   Logging::InitializeAWSLogging(
       Aws::MakeShared<Logging::DefaultLogSystem>(
           "log", (Logging::LogLevel)dnsConfig.log_level, dnsConfig.log_path));
@@ -155,7 +161,7 @@ isc_result_t dlz_create(
   Aws::OStringStream soaData;
   soaData << state->zone_name
           << " hostmaster." << state->zone_name
-          << " 123 900 600 86400 3600";
+          << " 123 172800 900 1209600 180";
   state->soa_data = soaData.str();
   state->stats_server = std::unique_ptr<StatsServer>(new StatsServer(8123, state->stats_receiver));
   state->stats_server->Start();
@@ -195,7 +201,8 @@ isc_result_t dlz_lookup(
   auto state = static_cast<dlz_state *>(dbdata);
 
   if (strcmp(name, "@") == 0) {
-    return ISC_R_NOTFOUND;
+    state->callbacks.putrr(lookup, "SOA", 120, state->soa_data.c_str());
+    return ISC_R_SUCCESS;
   }
   if (strcmp(name, "*") == 0) {
     return ISC_R_NOTFOUND;
@@ -247,6 +254,8 @@ isc_result_t dlz_lookup(
   auto success = state->client->TryResolveIp(instanceId, clientAddr, &ip);
   if (success) {
     return state->callbacks.putrr(lookup, "A", 120, ip.c_str());
+  } else {
+    return ISC_R_FAILURE;
   }
   return ISC_R_NOTFOUND;
 }

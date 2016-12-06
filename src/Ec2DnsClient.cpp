@@ -3,6 +3,7 @@
 
 #include "Ec2DnsClient.h"
 #include "dlz_minimal.h"
+#include "aws/core/Region.h"
 #include "aws/core/utils/json/JsonSerializer.h"
 
 using namespace std::placeholders;
@@ -45,21 +46,25 @@ bool Ec2DnsConfig::TryLoad(const std::string& file) {
 
   if (root.ValueExists("region")) {
     auto region = root.GetString("region");
-    auto regionEnum = Aws::Region::US_EAST_1;
-#define MAYBE_SET_REGION(str, value) if(region == str) { regionEnum = Aws::Region::value; }
+    std::string region_code;
+#define MAYBE_SET_REGION(str, code) if(region == str) { region_code = code; }
 
-    MAYBE_SET_REGION("us-west-1", US_WEST_1)
-    MAYBE_SET_REGION("us-west-2", US_WEST_2)
-    MAYBE_SET_REGION("eu-west-1", EU_WEST_1)
-    MAYBE_SET_REGION("eu-central-1", EU_CENTRAL_1)
-    MAYBE_SET_REGION("ap-southeast-1", AP_SOUTHEAST_1)
-    MAYBE_SET_REGION("ap-southeast-2", AP_SOUTHEAST_2)
-    MAYBE_SET_REGION("ap-northeast-1", AP_NORTHEAST_1)
-    MAYBE_SET_REGION("sa-east-1", SA_EAST_1)
-    this->client_config.region = regionEnum;
-  }
-  if (root.ValueExists("authentication_region")) {
-    this->client_config.authenticationRegion = root.GetString("authentication_region");
+    MAYBE_SET_REGION(Aws::Region::US_EAST_1, "ue1")
+    MAYBE_SET_REGION(Aws::Region::US_WEST_1, "uw1")
+    MAYBE_SET_REGION(Aws::Region::US_WEST_2, "uw2")
+    MAYBE_SET_REGION(Aws::Region::AP_NORTHEAST_1, "an1")
+    MAYBE_SET_REGION(Aws::Region::AP_NORTHEAST_2, "an2")
+    MAYBE_SET_REGION(Aws::Region::AP_SOUTHEAST_1, "as1")
+    MAYBE_SET_REGION(Aws::Region::AP_SOUTHEAST_2, "as2")
+    MAYBE_SET_REGION(Aws::Region::EU_WEST_1, "ew1")
+    MAYBE_SET_REGION(Aws::Region::EU_CENTRAL_1, "ec1")
+    MAYBE_SET_REGION(Aws::Region::SA_EAST_1, "se1")
+
+    this->client_config.region = region;
+    this->region_code = region_code;
+  } else {
+    this->client_config.region = Aws::Region::US_EAST_1;
+    this->region_code = "ue1";
   }
   if (root.ValueExists("endpoint_override")) {
     this->client_config.endpointOverride = root.GetString("endpoint_override");
@@ -138,7 +143,7 @@ bool Ec2DnsClient::_QueryInstanceById(const std::string &instanceId, std::string
 }
 
 const std::string Ec2DnsClient::_GetHostname(const Aws::EC2::Model::Instance& instance) {
-  const auto& regionCode = this->_GetRegionCode(this->m_config.client_config.region);
+  const auto& regionCode = this->m_config.region_code;
   const auto& az = instance.GetPlacement().GetAvailabilityZone();
   const auto& account = this->m_config.account_name;
   auto instanceId = instance.GetInstanceId().substr(2);

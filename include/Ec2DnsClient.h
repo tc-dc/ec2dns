@@ -72,7 +72,9 @@ public:
     size_t num_asg_records;
     std::string asg_dns_tag;
 
-    long request_batch_size;
+    int request_batch_size;
+
+    std::string region_code;
 
     bool TryLoad(const std::string& file);
 };
@@ -144,20 +146,6 @@ private:
     return true;
   };
 
-  inline const std::string _GetRegionCode(const Aws::Region region) {
-    switch (region) {
-      case Aws::Region::US_EAST_1: return "ue1";
-      case Aws::Region::US_WEST_1: return "uw1";
-      case Aws::Region::US_WEST_2: return "uw2";
-      case Aws::Region::AP_NORTHEAST_1: return "an1";
-      case Aws::Region::AP_NORTHEAST_2: return "an2";
-      case Aws::Region::AP_SOUTHEAST_1: return "as1";
-      case Aws::Region::AP_SOUTHEAST_2: return "as2";
-      case Aws::Region::EU_CENTRAL_1: return "ec1";
-      case Aws::Region::EU_WEST_1: return "ew1";
-      case Aws::Region::SA_EAST_1: return "se1";
-    }
-  }
   const std::string _GetHostname(const Aws::EC2::Model::Instance& instance);
 
   bool _CheckHostCache(const std::string& instanceId, std::string *ip);
