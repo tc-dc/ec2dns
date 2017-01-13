@@ -20,6 +20,7 @@ include_directories("external/include")
 
 SET(SRCS
         src/KRandom.cpp
+        src/CloudDnsClient.cpp
         src/Ec2DnsClient.cpp
         src/dlz_aws.cpp
         src/RequestThrottler.cpp
@@ -33,3 +34,6 @@ add_library(ec2dns SHARED ${SRCS})
 target_link_libraries(ec2dns ${LIBS})
 
 add_subdirectory(test)
+
+add_definitions(-DWITH_AWS)
+add_definitions(-DWITH_GCE)

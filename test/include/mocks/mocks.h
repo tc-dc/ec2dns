@@ -4,7 +4,7 @@
 #include "aws/ec2/EC2Client.h"
 #include "aws/ec2/model/DescribeInstancesRequest.h"
 
-#include "Ec2DnsClient.h"
+#include "CloudDnsClient.h"
 
 using namespace Aws::EC2::Model;
 using namespace Aws::AutoScaling::Model;

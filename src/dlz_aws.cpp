@@ -10,7 +10,7 @@
 #include <boost/algorithm/string/join.hpp>
 
 #include "dlz_minimal.h"
-#include "Ec2DnsClient.h"
+#include "CloudDnsClient.h"
 #include "HostMatcher.h"
 #include "KRandom.h"
 #include "ReverseLookupHelper.h"
@@ -22,24 +22,17 @@
 #include "aws/core/utils/logging/AWSLogging.h"
 #include "aws/core/utils/logging/DefaultLogSystem.h"
 
+#ifdef WITH_GCE
+#endif
+
+#ifdef WITH_AWS
+#include "Ec2DnsClient.h"
+#endif
+
+
 #include <arpa/inet.h>
 #include <dlz_minimal.h>
 
-using namespace Aws::EC2;
-using namespace Aws::Utils;
-
-struct dlz_state {
-    std::shared_ptr<Ec2DnsClient> client;
-    std::unique_ptr<HostMatcher> matcher;
-    std::unique_ptr<ReverseLookupHelper> rl_helper;
-    std::unique_ptr<StatsServer> stats_server;
-    std::shared_ptr<StatsReceiver> stats_receiver;
-    std::string soa_data;
-    std::string zone_name;
-    std::string autoscaler_zone_name;
-    size_t num_asg_records;
-    DlzCallbacks callbacks;
-};
 
 isc_result_t get_src_address(dns_clientinfomethods_t *methods,
     dns_clientinfo_t *clientinfo, std::string *srcAddress) {
@@ -111,45 +104,35 @@ isc_result_t dlz_create(
   }
   cbs.log(ISC_LOG_WARNING, "Creating EC2 client");
 
-  Ec2DnsConfig dnsConfig(argv[3], argv[2], argv[1]);
+  CloudDnsConfig dnsConfig(argv[3], argv[2], argv[1]);
   dnsConfig.TryLoad("/etc/ec2dns.conf");
-
-  Aws::SDKOptions options;
-  options.loggingOptions.logLevel = (Logging::LogLevel)dnsConfig.log_level;
-  options.cryptoOptions.initAndCleanupOpenSSL = false;
-  Aws::InitAPI(options);
-
-  Logging::InitializeAWSLogging(
-      Aws::MakeShared<Logging::DefaultLogSystem>(
-          "log", (Logging::LogLevel)dnsConfig.log_level, dnsConfig.log_path));
-
-  std::shared_ptr<EC2Client> ec2Client;
-  std::shared_ptr<AutoScalingClient> asgClient;
-  if (!dnsConfig.aws_access_key.empty() && !dnsConfig.aws_secret_key.empty()) {
-    Aws::Auth::AWSCredentials creds(
-        dnsConfig.aws_access_key,
-        dnsConfig.aws_secret_key);
-    ec2Client = std::make_shared<EC2Client>(creds, dnsConfig.client_config);
-    asgClient = std::make_shared<AutoScalingClient>(creds, dnsConfig.client_config);
-  }
-  else {
-    ec2Client = std::make_shared<EC2Client>(dnsConfig.client_config);
-    asgClient = std::make_shared<AutoScalingClient>(dnsConfig.client_config);
-  }
 
   auto state = new dlz_state();
   state->stats_receiver = std::make_shared<StatsReceiver>();
   state->num_asg_records = dnsConfig.num_asg_records;
-  state->client = std::make_shared<Ec2DnsClient>(
-          cbs.log,
-          ec2Client,
-          asgClient,
-          dnsConfig,
-          state->stats_receiver);
   state->zone_name = argv[1];
   state->autoscaler_zone_name = "asg." + state->zone_name;
   state->callbacks = cbs;
   state->matcher = std::unique_ptr<HostMatcher>(new HostMatcher(dnsConfig));
+
+  if (dnsConfig.provider == "aws") {
+#ifdef WITH_AWS
+    state->client = Ec2DnsClient::Create(dnsConfig, cbs.log, state->stats_receiver);
+#else
+    cbs.log(ISC_LOG_CRITICAL, "Provider was AWS but we weren't built with AWS support :'(");
+    return ISC_R_FAILURE;
+#endif
+  } else if (dnsConfig.provider == "gce") {
+#if WITH_GCE
+    cbs.log(ISC_LOG_CRITICAL, "Provider was GCE but we weren't built with GCE support :'(");
+#else
+    #endif
+  } else {
+    cbs.log(ISC_LOG_CRITICAL, "Unknown provider set");
+    return ISC_R_FAILURE;
+  }
+
+
   state->rl_helper = std::unique_ptr<ReverseLookupHelper>(new ReverseLookupHelper(state->client));
   if (!state->rl_helper->InitializeReverseLookupZones(argv[2])) {
     printf("ec2dns - Unable to load reverse lookup zones");
@@ -173,17 +156,16 @@ isc_result_t dlz_create(
 
 void dlz_destroy(void *dbdata) {
   delete static_cast<dlz_state *>(dbdata);
-  Logging::ShutdownAWSLogging();
 }
 
 isc_result_t dlz_findzonedb(void *dbdata, const char *name) {
   auto state = static_cast<dlz_state *>(dbdata);
   // Are we doing a plain old instance lookup?
-  if (StringUtils::CaselessCompare(state->zone_name.c_str(), name)) {
+  if (Aws::Utils::StringUtils::CaselessCompare(state->zone_name.c_str(), name)) {
     return ISC_R_SUCCESS;
   }
   // Are we doing an autoscaler lookup?
-  if (StringUtils::CaselessCompare(state->autoscaler_zone_name.c_str(), name)) {
+  if (Aws::Utils::StringUtils::CaselessCompare(state->autoscaler_zone_name.c_str(), name)) {
     return ISC_R_SUCCESS;
   }
   // Are we doing a reverse lookup?
@@ -227,7 +209,7 @@ isc_result_t dlz_lookup(
     return ISC_R_SUCCESS;
   }
 
-  if (StringUtils::CaselessCompare(state->autoscaler_zone_name.c_str(), zone)) {
+  if (Aws::Utils::StringUtils::CaselessCompare(state->autoscaler_zone_name.c_str(), zone)) {
     std::string clientAddr;
     std::vector<std::string> nodes;
     get_src_address(methods, clientinfo, &clientAddr);
@@ -255,7 +237,7 @@ isc_result_t dlz_lookup(
   if (success) {
     return state->callbacks.putrr(lookup, "A", 120, ip.c_str());
   } else {
-    return ISC_R_FAILURE;
+    return ISC_R_NOTFOUND;
   }
   return ISC_R_NOTFOUND;
 }

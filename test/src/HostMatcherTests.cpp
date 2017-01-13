@@ -1,7 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "HostMatcher.h"
-#include "Ec2DnsClient.h"
+#include "CloudDnsClient.h"
 
 TEST(TestHostMatcher, TestMatchesValidHostname) {
   auto config = Ec2DnsConfig("tc", "10.0.0.0/23", "aws.test");

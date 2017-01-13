@@ -1,6 +1,6 @@
 #include "gtest/gtest.h"
 
-#include "Ec2DnsClient.h"
+#include "CloudDnsClient.h"
 #include "mocks/mocks.h"
 
 using namespace testing;

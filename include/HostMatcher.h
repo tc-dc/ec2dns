@@ -5,12 +5,12 @@
 #ifndef EC2DNS_HOSTMATCHER_H
 #define EC2DNS_HOSTMATCHER_H
 
-#include "Ec2DnsClient.h"
+#include "CloudDnsClient.h"
 #include <boost/regex.hpp>
 
 class HostMatcher {
 public:
-    HostMatcher(const Ec2DnsConfig &config)
+    HostMatcher(const CloudDnsConfig &config)
       : m_hostRegex(config.instance_regex)
     {  }
 

@@ -3,11 +3,11 @@
 #include <string>
 #include <unordered_set>
 
-#include "Ec2DnsClient.h"
+#include "CloudDnsClient.h"
 
 class ReverseLookupHelper {
 public:
-  ReverseLookupHelper(std::shared_ptr<Ec2DnsClient> dnsClient)
+  ReverseLookupHelper(std::shared_ptr<CloudDnsClient> dnsClient)
     : m_dnsClient(dnsClient) { }
 
   bool InitializeReverseLookupZones(const std::string& vpcCidr);
@@ -15,6 +15,6 @@ public:
   bool DoReverseLookup(const std::string& zone, const std::string& name, const std::string &clientAddr, std::string *hostname);
 
 private:
-  std::shared_ptr<Ec2DnsClient> m_dnsClient;
+  std::shared_ptr<CloudDnsClient> m_dnsClient;
   std::unordered_set<std::string> m_rlZones;
 };
