@@ -95,22 +95,10 @@ std::shared_ptr<CloudDnsClient> Ec2DnsClient::Create(
     log_t *logCb,
     std::shared_ptr<StatsReceiver> statsReceiver)
 {
-  Aws::SDKOptions options;
-  options.loggingOptions.logLevel = (Logging::LogLevel)dnsConfig.log_level;
-  options.cryptoOptions.initAndCleanupOpenSSL = false;
-  Aws::InitAPI(options);
-
-  Logging::InitializeAWSLogging(
-      Aws::MakeShared<Logging::DefaultLogSystem>(
-          "log", (Logging::LogLevel)dnsConfig.log_level, dnsConfig.log_path));
+  auto clientConfig = CloudDnsClient::InitHttpClient(dnsConfig);
 
   std::shared_ptr<EC2Client> ec2Client;
   std::shared_ptr<AutoScalingClient> asgClient;
-
-  Aws::Client::ClientConfiguration clientConfig;
-  clientConfig.connectTimeoutMs = dnsConfig.connect_timeout_ms;
-  clientConfig.requestTimeoutMs = dnsConfig.request_timeout_ms;
-  clientConfig.region = dnsConfig.region;
 
   if (!dnsConfig.aws_access_key.empty() && !dnsConfig.aws_secret_key.empty()) {
     Aws::Auth::AWSCredentials creds(

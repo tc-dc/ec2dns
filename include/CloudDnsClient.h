@@ -9,6 +9,7 @@
 #include "Cache.h"
 #include "Stats.h"
 #include "RequestThrottler.h"
+#include "aws/core/client/ClientConfiguration.h"
 #include "aws/core/utils/json/JsonSerializer.h"
 
 #include <chrono>
@@ -69,6 +70,7 @@ public:
 
     std::string provider;
 
+    std::string credentials_file;
     std::string aws_access_key;
     std::string aws_secret_key;
 
@@ -139,6 +141,7 @@ public:
     bool TryResolveHostname(const std::string &ip, const std::string &clientAddr, std::string *hostname);
     bool TryResolveAutoscaler(const std::string &name, const std::string &clientAddr, std::vector<std::string> *nodes);
 
+    static const Aws::Client::ClientConfiguration InitHttpClient(const CloudDnsConfig &config);
 protected:
     void _RefreshInstanceData();
     void _RefreshAutoscalerDataImpl(const std::vector<Instance>& instances);

@@ -23,6 +23,7 @@
 #include "aws/core/utils/logging/DefaultLogSystem.h"
 
 #ifdef WITH_GCE
+#include "GceDnsClient.h"
 #endif
 
 #ifdef WITH_AWS
@@ -124,14 +125,15 @@ isc_result_t dlz_create(
 #endif
   } else if (dnsConfig.provider == "gce") {
 #if WITH_GCE
-    cbs.log(ISC_LOG_CRITICAL, "Provider was GCE but we weren't built with GCE support :'(");
+    state->client = GceDnsClient::Create(dnsConfig, cbs.log, state->stats_receiver);
 #else
+    cbs.log(ISC_LOG_CRITICAL, "Provider was GCE but we weren't built with GCE support :'(");
+    return ISC_R_FAILURE;
     #endif
   } else {
     cbs.log(ISC_LOG_CRITICAL, "Unknown provider set");
     return ISC_R_FAILURE;
   }
-
 
   state->rl_helper = std::unique_ptr<ReverseLookupHelper>(new ReverseLookupHelper(state->client));
   if (!state->rl_helper->InitializeReverseLookupZones(argv[2])) {

@@ -19,10 +19,12 @@ include_directories("include")
 include_directories("external/include")
 
 SET(SRCS
-        src/KRandom.cpp
         src/CloudDnsClient.cpp
-        src/Ec2DnsClient.cpp
         src/dlz_aws.cpp
+        src/Ec2DnsClient.cpp
+        src/GoogleApiClient.cpp
+        src/GceDnsClient.cpp
+        src/KRandom.cpp
         src/RequestThrottler.cpp
         src/ReverseLookupHelper.cpp
         src/Stats.cpp)

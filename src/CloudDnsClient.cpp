@@ -1,10 +1,14 @@
 #include <fstream>
 #include <boost/regex.hpp>
+#include <aws/core/client/ClientConfiguration.h>
 
 #include "CloudDnsClient.h"
 #include "dlz_minimal.h"
+#include "aws/core/Aws.h"
 #include "aws/core/Region.h"
 #include "aws/core/utils/json/JsonSerializer.h"
+#include "aws/core/utils/logging/AWSLogging.h"
+#include "aws/core/utils/logging/DefaultLogSystem.h"
 
 using namespace std::placeholders;
 
@@ -31,6 +35,7 @@ bool CloudDnsConfig::TryLoad(const std::string& file) {
   TryLoadString(log_path)
   TryLoadInteger(num_asg_records)
   TryLoadString(asg_dns_tag)
+  TryLoadString(credentials_file)
 
   if (root.ValueExists("requestTimeoutMs")) {
     this->request_timeout_ms = root.GetInteger("requestTimeoutMs");
@@ -67,6 +72,23 @@ bool CloudDnsConfig::TryLoad(const std::string& file) {
   TryLoadString(account_name)
   TryLoadInteger(request_batch_size)
   return true;
+}
+
+const Aws::Client::ClientConfiguration CloudDnsClient::InitHttpClient(const CloudDnsConfig &config) {
+  Aws::SDKOptions options;
+  options.loggingOptions.logLevel = (Aws::Utils::Logging::LogLevel)config.log_level;
+  options.cryptoOptions.initAndCleanupOpenSSL = false;
+  Aws::InitAPI(options);
+
+  Aws::Utils::Logging::InitializeAWSLogging(
+      Aws::MakeShared<Aws::Utils::Logging::DefaultLogSystem>(
+          "log", (Aws::Utils::Logging::LogLevel)config.log_level, config.log_path));
+
+  Aws::Client::ClientConfiguration clientConfig;
+  clientConfig.connectTimeoutMs = config.connect_timeout_ms;
+  clientConfig.requestTimeoutMs = config.request_timeout_ms;
+  clientConfig.region = config.region;
+  return clientConfig;
 }
 
 void CloudDnsClient::_RefreshInstanceData() {
