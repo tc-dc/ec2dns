@@ -70,25 +70,9 @@ bool CloudDnsConfig::TryLoad(const std::string& file) {
 
   TryLoadString(instance_regex)
   TryLoadString(account_name)
+  TryLoadString(profile_name)
   TryLoadInteger(request_batch_size)
   return true;
-}
-
-const Aws::Client::ClientConfiguration CloudDnsClient::InitHttpClient(const CloudDnsConfig &config) {
-  Aws::SDKOptions options;
-  options.loggingOptions.logLevel = (Aws::Utils::Logging::LogLevel)config.log_level;
-  options.cryptoOptions.initAndCleanupOpenSSL = false;
-  Aws::InitAPI(options);
-
-  Aws::Utils::Logging::InitializeAWSLogging(
-      Aws::MakeShared<Aws::Utils::Logging::DefaultLogSystem>(
-          "log", (Aws::Utils::Logging::LogLevel)config.log_level, config.log_path));
-
-  Aws::Client::ClientConfiguration clientConfig;
-  clientConfig.connectTimeoutMs = config.connect_timeout_ms;
-  clientConfig.requestTimeoutMs = config.request_timeout_ms;
-  clientConfig.region = config.region;
-  return clientConfig;
 }
 
 void CloudDnsClient::_RefreshInstanceData() {

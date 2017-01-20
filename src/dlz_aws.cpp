@@ -23,11 +23,11 @@
 #include "aws/core/utils/logging/DefaultLogSystem.h"
 
 #ifdef WITH_GCE
-#include "GceDnsClient.h"
+#include "gce/GceDnsClient.h"
 #endif
 
 #ifdef WITH_AWS
-#include "Ec2DnsClient.h"
+#include "ec2/Ec2DnsClient.h"
 #endif
 
 

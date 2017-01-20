@@ -1,0 +1,35 @@
+{
+  "kind": "discovery#directoryItem", 
+  "id": "compute:v1", 
+  "name": "compute", 
+  "version": "v1", 
+  "title": "Compute Engine API", 
+  "description": "Creates and runs virtual machines on Google Cloud Platform.", 
+  "discoveryRestUrl": "https://www.googleapis.com/discovery/v1/apis/compute/v1/rest", 
+  "discoveryLink": "./apis/compute/v1/rest", 
+  "icons": {
+    "x16": "https://www.google.com/images/icons/product/compute_engine-16.png", 
+    "x32": "https://www.google.com/images/icons/product/compute_engine-32.png"
+  }, 
+  "documentationLink": "https://developers.google.com/compute/docs/reference/latest/", 
+  "preferred": true, 
+  "packagePath": null, 
+  "canonicalName": null, 
+  "files": [
+    {
+      "downloadUrl": "/downloads/compute/v1/133/cpp/0.1.4/google-compute-v1-rev133-cpp-0.1.4-doc.zip", 
+      "path": "google-compute-v1-rev133-cpp-0.1.4-doc.zip", 
+      "type": "documentation", 
+      "timestamp": "2017-01-18 04:38"
+    }, 
+    {
+      "downloadUrl": "/downloads/compute/v1/133/cpp/0.1.4/google-compute-v1-rev133-cpp-0.1.4-src.zip", 
+      "path": "", 
+      "type": "source", 
+      "timestamp": "2017-01-18 05:16"
+    }
+  ], 
+  "revision": 133, 
+  "language": "cpp", 
+  "language_version": "0.1.4"
+}

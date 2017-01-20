@@ -37,6 +37,26 @@ RUN mkdir /tmp/aws-sdk-cpp/build \
  && make -j4
 RUN cd /tmp/aws-sdk-cpp/build && make install
 
+# Build the google C++ SDK
+RUN yum install -y glog-devel gflags-devel jsoncpp-devel
+RUN cd /tmp \
+ && git clone https://github.com/tc-dc/google-api-cpp-client.git \
+ && cd /tmp/google-api-cpp-client \
+ && git checkout bba60fa302fa26d322abdae3e60f75c8afa110b5 \
+ && mkdir /tmp/google-api-cpp-client/build \
+ && cd /tmp/google-api-cpp-client/build \
+ && /opt/cmake-3.4.1-Linux-x86_64/bin/cmake \
+    -Dgoogleapis_build_samples=OFF \
+    -Dgoogleapis_build_service_apis=ON \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_CXX_FLAGS=-fPIC \
+    -DJSONCPP_INCLUDE_DIRS=/usr/include/jsoncpp \
+    /tmp/google-api-cpp-client \
+ && make -j4 \
+ && make install \
+ && cp -r include/googleapis /usr/local/include/googleapis \
+ && cp -r lib/libgoogleapis*.a /usr/local/lib
+
 COPY include /tmp/ec2dns/include
 COPY src /tmp/ec2dns/src
 COPY docker /tmp/ec2dns/docker
@@ -59,6 +79,8 @@ RUN cd /tmp/ec2dns/build \
         -n ec2dns \
         --prefix /var/named \
         --after-install /tmp/ec2dns/docker/rpm/scripts/postinstall.sh \
+        -d "glog > 0.3.0" \
+        -d "jsoncpp > 0.10.0" \
         libec2dns.so
 
 CMD cp /tmp/ec2dns/build/*.rpm /out
