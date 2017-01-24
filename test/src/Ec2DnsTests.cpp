@@ -82,11 +82,11 @@ Aws::Vector<Aws::EC2::Model::Instance> _GetAsgInstances() {
 TEST(TestEc2DnsClient, TestEc2DnsClientResolveIp) {
   auto ptr = std::make_shared<MockEC2Client>();
   auto asgClient = std::make_shared<AutoScalingClient>();
-  auto config = Ec2DnsConfig("tc", "10.0.0.0/23", "aws.test");
+  auto config = CloudDnsConfig("tc", "10.0.0.0/23", "aws.test");
   EXPECT_CALL(*ptr, DescribeInstances(_))
       .WillOnce(Return(_GetExpectedResponse()));
 
-  Ec2DnsClient dnsClient(&_logcb, ptr, asgClient, config, std::make_shared<StatsReceiver>());
+  Ec2DnsClient dnsClient(ptr, asgClient, config, std::make_shared<StatsReceiver>());
   std::string ip;
   bool ret = dnsClient.TryResolveIp("i-1234567", "127.0.0.1", &ip);
   ASSERT_TRUE(ret);
@@ -95,11 +95,11 @@ TEST(TestEc2DnsClient, TestEc2DnsClientResolveIp) {
 
 TEST(TestEc2DnsClient, TestEc2DnsClientResolveHostname) {
   auto ptr = std::make_shared<MockEC2Client>();
-  auto config = Ec2DnsConfig("tc", "10.0.0.0/23", "aws.test");
+  auto config = CloudDnsConfig("tc", "10.0.0.0/23", "aws.test");
   EXPECT_CALL(*ptr, DescribeInstances(_))
       .WillOnce(Return(_GetExpectedResponse()));
 
-  Ec2DnsClient dnsClient(&_logcb, ptr, std::make_shared<AutoScalingClient>(), config, std::make_shared<StatsReceiver>());
+  Ec2DnsClient dnsClient(ptr, std::make_shared<AutoScalingClient>(), config, std::make_shared<StatsReceiver>());
   std::string hostname;
   bool ret = dnsClient.TryResolveHostname("10.1.2.3", "127.0.0.1", &hostname);
   ASSERT_TRUE(ret);
@@ -109,11 +109,11 @@ TEST(TestEc2DnsClient, TestEc2DnsClientResolveHostname) {
 void _TestAsg(const std::string& dnsName, std::vector<std::string> expectedNodes, bool expectedSuccess) {
   auto ptr = std::make_shared<MockEC2Client>();
   auto asg = std::make_shared<MockAutoScalingClient>();
-  auto config = Ec2DnsConfig("tc", "10.0.0.0/23", "aws.test");
+  auto config = CloudDnsConfig("tc", "10.0.0.0/23", "aws.test");
   EXPECT_CALL(*asg, DescribeAutoScalingGroups(_))
       .WillOnce(Return(_GetExpectedAsgResponse()));
 
-  MockDnsClient dnsClient(&_logcb, ptr, asg, config, std::make_shared<StatsReceiver>());
+  MockDnsClient dnsClient(ptr, asg, config, std::make_shared<StatsReceiver>());
   dnsClient.RefreshAutoScalerData(_GetAsgInstances());
 
   std::vector<std::string> nodes;

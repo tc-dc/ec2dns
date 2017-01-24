@@ -1,9 +1,10 @@
+#include <ec2/Ec2DnsClient.h>
 #include "gtest/gtest.h"
 
 #include "ReverseLookupHelper.h"
 
 TEST(TestReverseLookupHelper, TestReverseLookupZones) {
-  auto rl = ReverseLookupHelper(std::shared_ptr<Ec2DnsClient>());
+  auto rl = ReverseLookupHelper(std::shared_ptr<CloudDnsClient>());
   // Create a zone from 10.1.0.0 - 10.1.3.255
   rl.InitializeReverseLookupZones("10.1.0.0/22");
 

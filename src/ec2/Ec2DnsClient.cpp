@@ -17,7 +17,7 @@ bool Ec2DnsClient::_DescribeInstances(
   Aws::EC2::Model::DescribeInstancesRequest req;
   req.SetMaxResults(this->m_config.request_batch_size);
   if (instanceId.empty() && ip.empty()) {
-    this->m_log(ISC_LOG_INFO, "ec2dns - Getting all instances");
+    LOG(INFO) << "Getting all instances";
   }
   else if (ip.empty()) {
     req.AddInstanceIds(instanceId);
@@ -92,7 +92,6 @@ bool Ec2DnsClient::_DescribeAutoscalingGroups(
 
 std::shared_ptr<CloudDnsClient> Ec2DnsClient::Create(
     CloudDnsConfig &dnsConfig,
-    log_t *logCb,
     std::shared_ptr<StatsReceiver> statsReceiver)
 {
   Aws::SDKOptions options;
@@ -125,7 +124,6 @@ std::shared_ptr<CloudDnsClient> Ec2DnsClient::Create(
   }
 
   return std::make_shared<Ec2DnsClient>(
-      logCb,
       ec2Client,
       asgClient,
       dnsConfig,

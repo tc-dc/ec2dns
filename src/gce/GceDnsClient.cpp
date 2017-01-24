@@ -7,26 +7,21 @@
 #include <sstream>
 
 #include <json/json.h>
-#include "glog/logging.h"
-#include "googleapis/client/auth/oauth2_authorization.h"
-#include "google/compute_api/compute_api.h"
-#include "googleapis/client/data/data_reader.h"
-#include "googleapis/client/transport/http_transport.h"
-#include "googleapis/client/transport/curl_http_transport.h"
+#include <glog/logging.h>
+#include <googleapis/client/auth/oauth2_authorization.h>
+#include <googleapis/client/data/data_reader.h>
+#include <googleapis/client/transport/http_transport.h>
+#include <googleapis/client/transport/curl_http_transport.h>
+#include <google/compute_api/compute_api.h>
 
 using namespace googleapis::client;
 using namespace googleapis::util;
 
-std::shared_ptr<CloudDnsClient> GceDnsClient::Create(CloudDnsConfig &dnsConfig, log_t *logCb, std::shared_ptr<StatsReceiver> statsReceiver) {
-  // Set up logging
-  google::InitGoogleLogging("clouddns");
-  google::LogToStderr();
-  google::SetStderrLogging(dnsConfig.log_level);
-
-  auto config = new HttpTransportLayerConfig();
+std::shared_ptr<CloudDnsClient> GceDnsClient::Create(CloudDnsConfig &dnsConfig, std::shared_ptr<StatsReceiver> statsReceiver) {
+  auto config = std::unique_ptr<HttpTransportLayerConfig>(new HttpTransportLayerConfig());
   config->mutable_default_transport_options()->set_cacerts_path("");
   config->mutable_default_transport_options()->set_connect_timeout_ms(dnsConfig.connect_timeout_ms);
-  auto factory = new CurlHttpTransportFactory(config);
+  auto factory = new CurlHttpTransportFactory(config.get());
   factory->mutable_request_options()->set_timeout_ms(dnsConfig.request_timeout_ms);
   factory->mutable_request_options()->set_max_retries(3);
   config->ResetDefaultTransportFactory(factory);
@@ -40,7 +35,7 @@ std::shared_ptr<CloudDnsClient> GceDnsClient::Create(CloudDnsConfig &dnsConfig, 
   auto service = std::unique_ptr<google_compute_api::ComputeService>(
       new google_compute_api::ComputeService(httpTransport));
 
-  std::shared_ptr<AuthorizationCredential> creds;
+  std::unique_ptr<AuthorizationCredential> creds;
   if (!dnsConfig.credentials_file.empty()) {
     std::ifstream f(dnsConfig.credentials_file);
     if (f.fail()) {
@@ -63,28 +58,26 @@ std::shared_ptr<CloudDnsClient> GceDnsClient::Create(CloudDnsConfig &dnsConfig, 
     flow->mutable_client_spec()->set_client_id(root["client_id"].asString());
     flow->mutable_client_spec()->set_client_secret(root["client_secret"].asString());
 
-    auto oauthCreds = std::make_shared<OAuth2Credential>();
+    auto oauthCreds = std::unique_ptr<OAuth2Credential>(new OAuth2Credential());
     oauthCreds->set_refresh_token(root["refresh_token"].asString());
     oauthCreds->set_flow(flow);
-    creds = oauthCreds;
+    creds = std::move(oauthCreds);
   } else {
-    auto instanceCreds = std::make_shared<InstanceCredentials>(httpTransport);
-    creds = instanceCreds;
+    creds = std::unique_ptr<InstanceCredentials>(new InstanceCredentials(httpTransport));
   }
 
-  //status = creds->Refresh();
-
   return std::make_shared<GceDnsClient>(
-      logCb,
       dnsConfig,
       statsReceiver,
       std::move(service),
-      creds);
+      std::move(creds),
+      std::move(config)
+  );
 }
 
 bool GceDnsClient::_GetZones(std::unordered_set<std::string> *zones) {
   std::unique_ptr<google_compute_api::ZonesResource_ListMethodPager> pager(
-      this->m_apiClient->get_zones().NewListMethodPager(m_credentials.get(), "twitter-ads"));
+      this->m_apiClient->get_zones().NewListMethodPager(m_credentials.get(), this->m_config.profile_name));
 
   std::string regionUri = "https://www.googleapis.com/compute/v1/projects/" + this->m_config.profile_name + "/regions/" + this->m_config.region;
   while(pager->NextPage()) {
@@ -100,21 +93,35 @@ bool GceDnsClient::_GetZones(std::unordered_set<std::string> *zones) {
 
 bool GceDnsClient::_DescribeInstances(const std::string &instanceId, const std::string &ip,
                                       std::vector<Instance> *instances) {
-
   std::unordered_set<std::string> zones;
   this->_GetZones(&zones);
 
-  std::unique_ptr<google_compute_api::InstancesResource_AggregatedListMethodPager> pager(
-      this->m_apiClient->get_instances().NewAggregatedListMethodPager(m_credentials.get(), "twitter-ads"));
+  std::string filter;
+  if (!instanceId.empty()) {
+    std::istringstream iid(instanceId);
+    uint64 iid_val;
+    iid >> std::hex >> iid_val;
 
-  while(pager->NextPage()) {
-    for (const auto &kv : pager->data()->get_items()) {
-      auto zone = kv.first.substr(6);
-      if (zones.find(zone) == zones.end()) {
-        continue;
-      }
+    std::ostringstream filter_;
+    filter_ << "(id eq " << iid_val << ")";
+    filter = filter_.str();
+  }
+  if (!ip.empty()) {
+    return false; // can't filter on IP in the API
+  }
 
-      for (const auto &i : kv.second.get_instances()) {
+  for (const auto &z : zones) {
+    std::unique_ptr<google_compute_api::InstancesResource_ListMethodPager> pager(
+        this->m_apiClient->get_instances().NewListMethodPager(
+            m_credentials.get(),
+            this->m_config.profile_name,
+            z));
+    if (!filter.empty()) {
+      pager->request()->set_filter(filter);
+    }
+
+    while (pager->NextPage()) {
+      for (const auto &i : pager->data()->get_items()) {
         const auto ifaces = i.get_network_interfaces();
         if (ifaces.size() > 0) {
           const std::string privateIp = ifaces.get(0).get_network_ip().as_string();
@@ -123,7 +130,7 @@ bool GceDnsClient::_DescribeInstances(const std::string &instanceId, const std::
           instances->push_back(Instance(
               hexId.str(),
               privateIp,
-              zone));
+              z));
         }
       }
     }
@@ -133,5 +140,28 @@ bool GceDnsClient::_DescribeInstances(const std::string &instanceId, const std::
 
 bool GceDnsClient::_DescribeAutoscalingGroups(
     std::unordered_map<std::string, const std::unordered_set<std::string>> *results) {
+  // TODO: lolol GCE doesnt support tags on things?  Not sure how I'm going to do this...
   return false;
+  /*
+  std::unordered_set<std::string> zones;
+  this->_GetZones(&zones);
+
+  std::unique_ptr<google_compute_api::InstanceGroupsResource_AggregatedListMethodPager> pager(
+      this->m_apiClient->get_instance_groups().NewAggregatedListMethodPager(m_credentials.get(), this->m_config.profile_name));
+
+  while(pager->NextPage()) {
+    for (const auto& kv : pager->data()->get_items()) {
+      auto zone = kv.first.substr(6);
+      if (zones.find(zone) == zones.end()) {
+        continue;
+      }
+
+      for (const auto& ig : kv.second.get_instance_groups()) {
+        ig.get_
+      }
+    }
+  }
+
+  return false;
+  */
 }

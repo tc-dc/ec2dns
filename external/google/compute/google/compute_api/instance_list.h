@@ -144,7 +144,10 @@ class InstanceList : public client::JsonCppData {
   /**
    * Get a reference to the value of the '<code>items</code>' attribute.
    */
-  const client::JsonCppArray<Instance > get_items() const;
+  const client::JsonCppArray<Instance > get_items() const {
+    const Json::Value& storage = Storage("items");
+    return client::JsonValueToCppValueHelper<client::JsonCppArray<Instance>>(storage);
+  }
 
   /**
    * Gets a reference to a mutable value of the '<code>items</code>' property.

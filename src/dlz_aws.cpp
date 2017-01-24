@@ -4,23 +4,17 @@
 #include <random>
 #include <unordered_set>
 
-#include <boost/algorithm/string/classification.hpp>
-#include <boost/algorithm/string/predicate.hpp>
-#include <boost/algorithm/string/split.hpp>
-#include <boost/algorithm/string/join.hpp>
+#include <arpa/inet.h>
+#include <dlz_minimal.h>
 
-#include "dlz_minimal.h"
+#include "BindLogSink.h"
 #include "CloudDnsClient.h"
 #include "HostMatcher.h"
 #include "KRandom.h"
 #include "ReverseLookupHelper.h"
 #include "Stats.h"
 
-#include "aws/core/Aws.h"
-#include "aws/core/auth/AWSCredentialsProvider.h"
 #include "aws/core/utils/StringUtils.h"
-#include "aws/core/utils/logging/AWSLogging.h"
-#include "aws/core/utils/logging/DefaultLogSystem.h"
 
 #ifdef WITH_GCE
 #include "gce/GceDnsClient.h"
@@ -30,9 +24,6 @@
 #include "ec2/Ec2DnsClient.h"
 #endif
 
-
-#include <arpa/inet.h>
-#include <dlz_minimal.h>
 
 
 isc_result_t get_src_address(dns_clientinfomethods_t *methods,
@@ -108,6 +99,9 @@ isc_result_t dlz_create(
   CloudDnsConfig dnsConfig(argv[3], argv[2], argv[1]);
   dnsConfig.TryLoad("/etc/ec2dns.conf");
 
+  google::InitGoogleLogging("clouddns");
+  google::AddLogSink(new BindLogSink(cbs.log));
+
   auto state = new dlz_state();
   state->stats_receiver = std::make_shared<StatsReceiver>();
   state->num_asg_records = dnsConfig.num_asg_records;
@@ -118,14 +112,14 @@ isc_result_t dlz_create(
 
   if (dnsConfig.provider == "aws") {
 #ifdef WITH_AWS
-    state->client = Ec2DnsClient::Create(dnsConfig, cbs.log, state->stats_receiver);
+    state->client = Ec2DnsClient::Create(dnsConfig, state->stats_receiver);
 #else
     cbs.log(ISC_LOG_CRITICAL, "Provider was AWS but we weren't built with AWS support :'(");
     return ISC_R_FAILURE;
 #endif
   } else if (dnsConfig.provider == "gce") {
 #if WITH_GCE
-    state->client = GceDnsClient::Create(dnsConfig, cbs.log, state->stats_receiver);
+    state->client = GceDnsClient::Create(dnsConfig, state->stats_receiver);
 #else
     cbs.log(ISC_LOG_CRITICAL, "Provider was GCE but we weren't built with GCE support :'(");
     return ISC_R_FAILURE;
@@ -143,7 +137,7 @@ isc_result_t dlz_create(
 
   state->client->LaunchRefreshThread();
 
-  Aws::OStringStream soaData;
+  std::ostringstream soaData;
   soaData << state->zone_name
           << " hostmaster." << state->zone_name
           << " 123 172800 900 1209600 180";

@@ -393,7 +393,10 @@ class InstanceGroupsScopedList : public client::JsonCppData {
    * Get a reference to the value of the '<code>instanceGroups</code>'
    * attribute.
    */
-  const client::JsonCppArray<InstanceGroup > get_instance_groups() const;
+  const client::JsonCppArray<InstanceGroup > get_instance_groups() const {
+    const Json::Value& storage = Storage("instanceGroups");
+    return client::JsonValueToCppValueHelper<client::JsonCppArray<InstanceGroup>>(storage);
+  }
 
   /**
    * Gets a reference to a mutable value of the '<code>instanceGroups</code>'

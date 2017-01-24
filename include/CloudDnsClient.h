@@ -1,7 +1,3 @@
-//
-// Created by Steve Niemitz on 1/7/16.
-//
-
 #ifndef AWSDNS_EC2DNSCLIENT_H
 #define AWSDNS_EC2DNSCLIENT_H
 
@@ -10,8 +6,6 @@
 #include "Stats.h"
 #include "RequestThrottler.h"
 #include "CloudDnsConfig.h"
-#include "aws/core/client/ClientConfiguration.h"
-#include "aws/core/utils/json/JsonSerializer.h"
 
 #include <chrono>
 #include <mutex>
@@ -20,7 +14,9 @@
 #include <unordered_set>
 #include <vector>
 
+#include <aws/core/client/ClientConfiguration.h>
 #include <boost/regex.hpp>
+#include <glog/logging.h>
 
 using namespace std::chrono;
 
@@ -69,9 +65,8 @@ private:
 class CloudDnsClient {
 public:
     CloudDnsClient(
-        log_t *logCb,
         const CloudDnsConfig config, std::shared_ptr<StatsReceiver> statsReceiver)
-      : m_log(logCb), m_config(config), m_throttler(new RequestThrottler()),
+      : m_config(config), m_throttler(new RequestThrottler()),
         m_hostCache("host", statsReceiver, config.instance_timeout),
         m_asgCache("asg", statsReceiver, config.instance_timeout),
         m_apiFailures(statsReceiver->Create("api_failure")),
@@ -96,8 +91,6 @@ protected:
     void _RefreshInstanceDataImpl();
     virtual bool _DescribeInstances(const std::string& instanceId, const std::string& ip, std::vector<Instance> *instances) = 0;
     virtual bool _DescribeAutoscalingGroups(std::unordered_map<std::string, const std::unordered_set<std::string>> *results) = 0;
-
-    log_t *m_log;
 
     CloudDnsConfig m_config;
     std::unique_ptr<RequestThrottler> m_throttler;

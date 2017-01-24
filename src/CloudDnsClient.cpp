@@ -1,3 +1,4 @@
+#include <json/json.h>
 #include <fstream>
 #include <boost/regex.hpp>
 #include <aws/core/client/ClientConfiguration.h>
@@ -7,14 +8,12 @@
 #include "aws/core/Aws.h"
 #include "aws/core/Region.h"
 #include "aws/core/utils/json/JsonSerializer.h"
-#include "aws/core/utils/logging/AWSLogging.h"
-#include "aws/core/utils/logging/DefaultLogSystem.h"
 
 using namespace std::placeholders;
 
 bool CloudDnsConfig::TryLoad(const std::string& file) {
-#define TryLoadString(key) if (root.ValueExists(#key)) { this->key = root.GetString(#key); }
-#define TryLoadInteger(key) if (root.ValueExists(#key)) { this->key = root.GetInteger(#key); }
+#define TryLoadString(key) if (root.isMember(#key)) { this->key = root[#key].asString(); }
+#define TryLoadInteger(key) if (root.isMember(#key)) { this->key = root[#key].asInt(); }
 
   std::ifstream f(file);
   if (f.fail()) {
@@ -22,9 +21,9 @@ bool CloudDnsConfig::TryLoad(const std::string& file) {
     return false;
   }
 
-  Aws::Utils::Json::JsonValue root(f);
-  if (!root.WasParseSuccessful()) {
-    // Not valid json
+  Json::Reader r;
+  Json::Value root;
+  if (!r.parse(f, root)) {
     return false;
   }
 
@@ -37,15 +36,15 @@ bool CloudDnsConfig::TryLoad(const std::string& file) {
   TryLoadString(asg_dns_tag)
   TryLoadString(credentials_file)
 
-  if (root.ValueExists("requestTimeoutMs")) {
-    this->request_timeout_ms = root.GetInteger("requestTimeoutMs");
+  if (root.isMember("requestTimeoutMs")) {
+    this->request_timeout_ms = root["requestTimeoutMs"].asInt();
   }
-  if (root.ValueExists("connectTimeoutMs")) {
-    this->connect_timeout_ms = root.GetInteger("connectTimeoutMs");
+  if (root.isMember("connectTimeoutMs")) {
+    this->connect_timeout_ms = root["connectTimeoutMs"].asInt();
   }
 
-  if (root.ValueExists("region")) {
-    auto region = root.GetString("region");
+  if (root.isMember("region")) {
+    auto region = root["region"].asString();
     std::string region_code;
 #define MAYBE_SET_REGION(str, code) if(region == str) { region_code = code; }
 
@@ -72,6 +71,7 @@ bool CloudDnsConfig::TryLoad(const std::string& file) {
   TryLoadString(account_name)
   TryLoadString(profile_name)
   TryLoadInteger(request_batch_size)
+  TryLoadInteger(refresh_interval)
   return true;
 }
 
@@ -85,8 +85,7 @@ void CloudDnsClient::_RefreshInstanceData() {
 }
 
 bool CloudDnsClient::_QueryInstanceById(const std::string &instanceId, std::string *ip) {
-  this->m_log(
-      ISC_LOG_INFO, "ec2dns - Querying name %s", instanceId.c_str());
+  VLOG(0) << "Querying name " << instanceId.c_str();
 
   std::vector<Instance> instances;
   bool success = this->_DescribeInstances(instanceId, "", &instances);
@@ -97,10 +96,7 @@ bool CloudDnsClient::_QueryInstanceById(const std::string &instanceId, std::stri
   if (!success) {
     return false;
   }
-  this->m_log(
-      ISC_LOG_WARNING,
-      "ec2dns - Unable to resolve instance %s because it was not found.",
-      instanceId.c_str());
+  LOG(WARNING) << "Unable to resolve instance " << instanceId << " because it was not found.";
   return false;
 }
 
@@ -126,11 +122,7 @@ bool CloudDnsClient::_QueryInstanceByIp(const std::string &ip, std::string *host
   if (!success) {
     return false;
   }
-  this->m_log(
-      ISC_LOG_WARNING,
-      "ec2dns - Unable to resolve hostname for ip %s because it was not found,",
-      ip.c_str()
-  );
+  LOG(WARNING) << "Unable to resolve hostname for ip " << ip << " because it was not found";
   return false;
 }
 
@@ -186,9 +178,8 @@ bool CloudDnsClient::TryResolveAutoscaler(const std::string &name, const std::st
 void CloudDnsClient::_RefreshInstanceDataImpl() {
   std::vector<Instance> instances;
   bool success = this->_DescribeInstances("", "", &instances);
-  if (not success) {
-    this->m_log(ISC_LOG_ERROR, "ec2dns - Unable to refresh cache.");
-    return;
+  if (!success) {
+    LOG(ERROR) << "Unable to refresh cache.";
   }
   this->_RefreshAutoscalerDataImpl(instances);
 
@@ -203,7 +194,7 @@ void CloudDnsClient::_RefreshInstanceDataImpl() {
     }
     UNUSED(lock);
   }
-  this->m_log(ISC_LOG_INFO, "ec2dns - Refreshed cache with %d instances", instances.size());
+  LOG(INFO) << "Refreshed cache with " << instances.size() << " instances";
 }
 
 void CloudDnsClient::_RefreshAutoscalerDataImpl(const std::vector<Instance>& instances) {

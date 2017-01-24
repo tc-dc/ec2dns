@@ -25,11 +25,12 @@ void StatsServer::_StartSync() {
 }
 
 void StatsServer::_RenderStats(HttpServer::Response& response, std::shared_ptr<HttpServer::Request> request) {
-  Aws::Utils::Json::JsonValue root;
+  Json::Value root;
   auto stats = m_stats->GetAllStats();
   for (auto &s : stats) {
-    root.WithInt64(s->GetName(), s->GetValue());
+    root[s->GetName()] = s->GetValue();
   }
-  auto resp = root.WriteReadable();
+  Json::StyledWriter writer;
+  auto resp = writer.write(root);
   response << "HTTP/1.1 200 OK\r\nContent-Length: " << resp.size() <<"\r\n\r\n" << resp;
 }

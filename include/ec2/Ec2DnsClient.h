@@ -15,17 +15,16 @@ using namespace Aws::EC2;
 class Ec2DnsClient : public CloudDnsClient {
 public:
     Ec2DnsClient(
-        log_t *logCb,
         const std::shared_ptr<EC2Client> ec2Client,
         const std::shared_ptr<AutoScalingClient> asgClient,
         const CloudDnsConfig config,
         std::shared_ptr<StatsReceiver> statsReceiver
-    ) : CloudDnsClient(logCb, config, statsReceiver),
+    ) : CloudDnsClient(config, statsReceiver),
         m_ec2Client(ec2Client), m_asgClient(asgClient)
     {
     }
 
-    static std::shared_ptr<CloudDnsClient> Create(CloudDnsConfig &dnsConfig, log_t *logCb, std::shared_ptr<StatsReceiver> statsReceiver);
+    static std::shared_ptr<CloudDnsClient> Create(CloudDnsConfig &dnsConfig, std::shared_ptr<StatsReceiver> statsReceiver);
 
 protected:
     virtual bool _DescribeInstances(const std::string& instanceId, const std::string& ip, std::vector<Instance> *instances);
@@ -42,15 +41,11 @@ private:
       do {
         this->m_apiRequests->Increment();
         auto ret = requestFn(request);
-        this->m_log(ISC_LOG_INFO, "ec2dns - API Request complete");
+        LOG(INFO) << "API Request complete";
         if (!ret.IsSuccess()) {
           this->m_apiFailures->Increment();
           auto errorMessage = ret.GetError().GetMessage();
-          this->m_log(
-              ISC_LOG_ERROR,
-              "ec2dns - API request %s failed with error: %s",
-              apiTag.c_str(),
-              errorMessage.c_str());
+          LOG(ERROR) << "API request " << apiTag << " failed with error: " << errorMessage;
           return false;
         }
         this->m_apiSuccesses->Increment();

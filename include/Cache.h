@@ -51,7 +51,7 @@ public:
 
   void Trim() {
     std::lock_guard<std::mutex>(this->m_cacheLock);
-    std::vector<Aws::String> toDelete;
+    std::vector<std::string> toDelete;
     time_point<steady_clock> now = steady_clock::now();
     // Delete expired entries
     for (auto& it : this->m_cache) {

@@ -3,8 +3,9 @@
 #include <memory>
 #include <mutex>
 
+#include <json/json.h>
+
 #include "server_http.hpp"
-#include "aws/core/utils/json/JsonSerializer.h"
 
 using namespace std::placeholders;
 
