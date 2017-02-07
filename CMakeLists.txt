@@ -37,8 +37,8 @@ SET(GOOGLE_LIBS
         googleapis_curl_http
         googleapis_http
         googleapis_internal
-        googleapis_json
         googleapis_jsoncpp
+        googleapis_json
         googleapis_oauth2
         googleapis_openssl_codec
         googleapis_utils)

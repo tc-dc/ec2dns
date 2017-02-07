@@ -27,7 +27,7 @@ public:
     static std::shared_ptr<CloudDnsClient> Create(CloudDnsConfig &dnsConfig, std::shared_ptr<StatsReceiver> statsReceiver);
 
 protected:
-    virtual bool _DescribeInstances(const std::string& instanceId, const std::string& ip, std::vector<Instance> *instances);
+    virtual bool _DescribeInstances(const std::string& instanceId, const std::string& ip, std::vector<std::unique_ptr<Instance>> *instances);
     virtual bool _DescribeAutoscalingGroups(std::unordered_map<std::string, const std::unordered_set<std::string>> *results);
 
 private:

@@ -67,10 +67,11 @@ COPY CMakeLists.txt /tmp/ec2dns/
 RUN mkdir /tmp/ec2dns/build \
  && cd /tmp/ec2dns/build \
  && /opt/cmake-3.4.1-Linux-x86_64/bin/cmake \
+    -DCMAKE_BUILD_TYPE=Release \
     /tmp/ec2dns \
  && make -j4 ec2dns
 
-ENV EC2DNS_VERSION=1.12
+ENV EC2DNS_VERSION=1.14
 # make an rpm
 RUN cd /tmp/ec2dns/build \
  && fpm -t rpm \

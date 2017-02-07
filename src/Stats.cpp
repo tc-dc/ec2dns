@@ -18,6 +18,7 @@ void StatsServer::Start() {
 
 void StatsServer::Stop() {
   this->m_server->stop();
+  this->m_serverThread.join();
 }
 
 void StatsServer::_StartSync() {
@@ -26,11 +27,14 @@ void StatsServer::_StartSync() {
 
 void StatsServer::_RenderStats(HttpServer::Response& response, std::shared_ptr<HttpServer::Request> request) {
   Json::Value root;
-  auto stats = m_stats->GetAllStats();
-  for (auto &s : stats) {
-    root[s->GetName()] = s->GetValue();
+  if (m_stats.get() != nullptr) {
+    auto stats = m_stats->GetAllStats();
+    for (auto &s : stats) {
+      root[s->GetName()] = Json::Value((double) s->GetValue());
+    }
   }
+
   Json::StyledWriter writer;
   auto resp = writer.write(root);
-  response << "HTTP/1.1 200 OK\r\nContent-Length: " << resp.size() <<"\r\n\r\n" << resp;
+  response << "HTTP/1.1 200 OK\r\nContent-Length: " << resp.size() << "\r\n\r\n" << resp;
 }

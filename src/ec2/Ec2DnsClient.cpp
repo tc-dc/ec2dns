@@ -12,7 +12,7 @@ using namespace Aws::Utils;
 bool Ec2DnsClient::_DescribeInstances(
     const std::string &instanceId,
     const std::string &ip,
-    std::vector<Instance> *instances) {
+    std::vector<std::unique_ptr<Instance>> *instances) {
 
   Aws::EC2::Model::DescribeInstancesRequest req;
   req.SetMaxResults(this->m_config.request_batch_size);
@@ -44,7 +44,11 @@ bool Ec2DnsClient::_DescribeInstances(
     for (const auto &r : reservs) {
       const auto resInstances = r.GetInstances();
       for (const auto &i : resInstances) {
-        instances->push_back(Instance(i.GetInstanceId(), i.GetPrivateIpAddress(), i.GetPlacement().GetAvailabilityZone()));
+        instances->push_back(
+            std::unique_ptr<Instance>(new Instance(
+                i.GetInstanceId(),
+                i.GetPrivateIpAddress(),
+                i.GetPlacement().GetAvailabilityZone())));
       }
     }
   }

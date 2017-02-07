@@ -55,6 +55,9 @@ isc_result_t get_src_address(dns_clientinfomethods_t *methods,
   return ISC_R_FAILURE;
 }
 
+std::unique_ptr<StatsServer> g_stats_server;
+std::once_flag g_init;
+
 extern "C" {
 
 int dlz_version(unsigned int *flags) {
@@ -82,7 +85,7 @@ isc_result_t dlz_create(
   va_list ap;
   va_start(ap, dbdata);
   const char *helper_name;
-  DlzCallbacks cbs;
+  DlzCallbacks cbs = {};
 
   while ((helper_name = va_arg(ap, const char *)) != NULL) {
     b9_add_helper(&cbs, helper_name, va_arg(ap, void*));
@@ -99,8 +102,12 @@ isc_result_t dlz_create(
   CloudDnsConfig dnsConfig(argv[3], argv[2], argv[1]);
   dnsConfig.TryLoad("/etc/ec2dns.conf");
 
-  google::InitGoogleLogging("clouddns");
-  google::AddLogSink(new BindLogSink(cbs.log));
+  std::call_once(g_init, [&cbs]() {
+      google::InitGoogleLogging("clouddns");
+      google::AddLogSink(new BindLogSink(cbs.log));
+      g_stats_server = std::unique_ptr<StatsServer>(new StatsServer(8123));
+      g_stats_server->Start();
+  });
 
   auto state = new dlz_state();
   state->stats_receiver = std::make_shared<StatsReceiver>();
@@ -109,6 +116,7 @@ isc_result_t dlz_create(
   state->autoscaler_zone_name = "asg." + state->zone_name;
   state->callbacks = cbs;
   state->matcher = std::unique_ptr<HostMatcher>(new HostMatcher(dnsConfig));
+  g_stats_server->SetStatsSource(state->stats_receiver);
 
   if (dnsConfig.provider == "aws") {
 #ifdef WITH_AWS
@@ -142,8 +150,6 @@ isc_result_t dlz_create(
           << " hostmaster." << state->zone_name
           << " 123 172800 900 1209600 180";
   state->soa_data = soaData.str();
-  state->stats_server = std::unique_ptr<StatsServer>(new StatsServer(8123, state->stats_receiver));
-  state->stats_server->Start();
   *dbdata = state;
 
   cbs.log(ISC_LOG_WARNING, "EC2 client created");
@@ -151,7 +157,8 @@ isc_result_t dlz_create(
 }
 
 void dlz_destroy(void *dbdata) {
-  delete static_cast<dlz_state *>(dbdata);
+  auto* state = static_cast<dlz_state *>(dbdata);
+  delete state;
 }
 
 isc_result_t dlz_findzonedb(void *dbdata, const char *name) {

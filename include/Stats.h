@@ -14,7 +14,7 @@ public:
     Stat(const Stat&) = delete;
 
     Stat(const std::string& name)
-        : m_name(name) {
+        : m_name(name), m_value(0) {
     }
 
     inline void Increment(const uint64_t amount=1) {
@@ -49,14 +49,18 @@ public:
 
     typedef SimpleWeb::Server<SimpleWeb::HTTP> HttpServer;
 
-    StatsServer(unsigned short port, const std::shared_ptr<StatsReceiver> statsReceiver)
-      : m_stats(statsReceiver) {
+    StatsServer(unsigned short port)
+    {
       m_server = std::unique_ptr<HttpServer>(new HttpServer(port, 4));
       m_server->resource["^/stats$"]["GET"] = std::bind(&StatsServer::_RenderStats, this, _1, _2);
     }
 
     ~StatsServer() {
       this->Stop();
+    }
+
+    void SetStatsSource(const std::shared_ptr<StatsReceiver> statsReceiver) {
+      this->m_stats = statsReceiver;
     }
 
     void Start();

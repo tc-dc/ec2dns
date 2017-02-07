@@ -72,25 +72,47 @@ bool CloudDnsConfig::TryLoad(const std::string& file) {
   TryLoadString(profile_name)
   TryLoadInteger(request_batch_size)
   TryLoadInteger(refresh_interval)
+  TryLoadInteger(max_request_concurrency)
+  TryLoadInteger(max_request_pool_size)
   return true;
 }
 
+CloudDnsClient::~CloudDnsClient() {
+  LOG(WARNING) << "Shutting down DNS client";
+  this->m_shutdown = true;
+  this->m_refreshThread.join();
+}
+
+void CloudDnsClient::LaunchRefreshThread() {
+  this->m_refreshThread = std::thread(&CloudDnsClient::_RefreshInstanceData, this);
+}
+
 void CloudDnsClient::_RefreshInstanceData() {
+  std::chrono::seconds sleepDuration(this->m_config.refresh_interval);
   while (true) {
     this->_RefreshInstanceDataImpl();
     this->m_throttler->Trim();
-    std::this_thread::sleep_for(
-        std::chrono::seconds(this->m_config.refresh_interval));
+    this->_AfterRefresh();
+    auto sleepEnd = std::chrono::steady_clock::now() + sleepDuration;
+    /* GCC 4.8.5 has a bug where timed_mutex is broken in linux,
+     * this works around it by just polling every second :'(
+     */
+    while (std::chrono::steady_clock::now() < sleepEnd) {
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      if (this->m_shutdown) {
+        return;
+      }
+    }
   }
 }
 
-bool CloudDnsClient::_QueryInstanceById(const std::string &instanceId, std::string *ip) {
+bool CloudDnsClient::_QueryInstanceById(const std::string &instanceId, const std::string& clientAddr, std::string *ip) {
   VLOG(0) << "Querying name " << instanceId.c_str();
 
-  std::vector<Instance> instances;
+  std::vector<std::unique_ptr<Instance>> instances;
   bool success = this->_DescribeInstances(instanceId, "", &instances);
   if (success && instances.size() > 0) {
-    *ip = instances[0].GetPrivateIpAddress();
+    *ip = instances[0]->GetPrivateIpAddress();
     return true;
   }
   if (!success) {
@@ -100,22 +122,22 @@ bool CloudDnsClient::_QueryInstanceById(const std::string &instanceId, std::stri
   return false;
 }
 
-const std::string CloudDnsClient::_GetHostname(const Instance& instance) {
+const std::string CloudDnsClient::_GetHostname(const std::unique_ptr<Instance>& instance) {
   const auto& regionCode = this->m_config.region_code;
-  const auto& az = instance.GetZone();
+  const auto& az = instance->GetZone();
   const auto& account = this->m_config.account_name;
-  auto instanceId = instance.GetInstanceId().substr(2);
+  auto instanceId = instance->GetInstanceId().substr(2);
   std::ostringstream oss;
   oss << regionCode << az[az.length() - 1] << "-" << account << "-" << instanceId
       << "." << this->m_config.zone_name << ".";
   return oss.str();
 }
 
-bool CloudDnsClient::_QueryInstanceByIp(const std::string &ip, std::string *hostname) {
-  std::vector<Instance> instances;
+bool CloudDnsClient::_QueryInstanceByIp(const std::string &ip, const std::string& clientAddr, std::string *hostname) {
+  std::vector<std::unique_ptr<Instance>> instances;
   bool success = this->_DescribeInstances("", ip, &instances);
   if (success && instances.size() > 0) {
-    auto instance = instances[0];
+    const auto& instance = instances[0];
     *hostname = this->_GetHostname(instance);
     return true;
   }
@@ -133,7 +155,7 @@ bool CloudDnsClient::_CheckHostCache(const std::string &instanceId, std::string 
 bool CloudDnsClient::_Resolve(
     const std::string &key,
     const std::string &clientAddr,
-    const std::function<bool(const std::string&, std::string*)> valueFactory,
+    const std::function<bool(const std::string&, const std::string&, std::string*)> valueFactory,
     std::string *value) {
   if (key.empty()) {
     return false;
@@ -145,7 +167,7 @@ bool CloudDnsClient::_Resolve(
     return false;
   }
   this->m_throttler->OnMiss(key, clientAddr);
-  if (valueFactory(key, value)) {
+  if (valueFactory(key, clientAddr, value)) {
     this->m_hostCache.Insert(key, *value);
     return true;
   }
@@ -157,7 +179,7 @@ bool CloudDnsClient::TryResolveIp(const std::string &instanceId, const std::stri
   return this->_Resolve(
       instanceId,
       clientAddr,
-      std::bind(&CloudDnsClient::_QueryInstanceById, this, _1, _2),
+      std::bind(&CloudDnsClient::_QueryInstanceById, this, _1, _2, _3),
       ip);
 }
 
@@ -166,7 +188,7 @@ bool CloudDnsClient::TryResolveHostname(const std::string &ip, const std::string
   return this->_Resolve(
       ip,
       clientAddr,
-      std::bind(&CloudDnsClient::_QueryInstanceByIp, this, _1, _2),
+      std::bind(&CloudDnsClient::_QueryInstanceByIp, this, _1, _2, _3),
       hostname);
 }
 
@@ -175,29 +197,31 @@ bool CloudDnsClient::TryResolveAutoscaler(const std::string &name, const std::st
   return this->m_asgCache.TryGet(name, nodes);
 }
 
-void CloudDnsClient::_RefreshInstanceDataImpl() {
-  std::vector<Instance> instances;
+void CloudDnsClient::_RefreshInstanceDataImpl(bool force) {
+  std::vector<std::unique_ptr<Instance>> instances;
   bool success = this->_DescribeInstances("", "", &instances);
   if (!success) {
     LOG(ERROR) << "Unable to refresh cache.";
+    return;
   }
-  this->_RefreshAutoscalerDataImpl(instances);
-
-  {
-    auto&& lock = this->m_hostCache.GetLock();
-    this->m_hostCache.Trim();
-
+  if (!force) {
+    this->_RefreshAutoscalerDataImpl(instances);
+  }
+  this->m_hostCache.Bulk([this, &instances](Cache<std::string>& cache) {
     auto expiresOn = std::chrono::steady_clock::now() + std::chrono::seconds(this->m_config.instance_timeout);
     for (const auto& it : instances) {
-      this->m_hostCache.InsertNoLock(it.GetInstanceId(), it.GetPrivateIpAddress(), expiresOn);
-      this->m_hostCache.InsertNoLock(it.GetPrivateIpAddress(), this->_GetHostname(it), expiresOn);
+      cache.InsertNoLock(it->GetInstanceId(), it->GetPrivateIpAddress(), expiresOn);
+      cache.InsertNoLock(it->GetPrivateIpAddress(), this->_GetHostname(it), expiresOn);
     }
-    UNUSED(lock);
+  });
+  if (!force) {
+    this->m_hostCache.Trim();
   }
+
   LOG(INFO) << "Refreshed cache with " << instances.size() << " instances";
 }
 
-void CloudDnsClient::_RefreshAutoscalerDataImpl(const std::vector<Instance>& instances) {
+void CloudDnsClient::_RefreshAutoscalerDataImpl(const std::vector<std::unique_ptr<Instance>>& instances) {
   std::unordered_map<std::string, const std::unordered_set<std::string>> results;
   bool success = this->_DescribeAutoscalingGroups(&results);
 
@@ -207,7 +231,7 @@ void CloudDnsClient::_RefreshAutoscalerDataImpl(const std::vector<Instance>& ins
 
   std::unordered_map<std::string, std::string> instanceToIpLookup;
   for (const auto &i : instances) {
-    instanceToIpLookup[i.GetInstanceId()] = i.GetPrivateIpAddress();
+    instanceToIpLookup[i->GetInstanceId()] = i->GetPrivateIpAddress();
   }
 
   auto expiresOn = std::chrono::steady_clock::now() + std::chrono::seconds(10 * 60);

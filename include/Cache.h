@@ -1,8 +1,9 @@
 #pragma once
 
 #include <memory>
-#include <unordered_map>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 
 #include "CacheEntry.h"
 #include "Stats.h"
@@ -33,8 +34,9 @@ public:
     }
   }
 
-  std::unique_lock<std::mutex>&& GetLock() {
-    return std::move(std::unique_lock<std::mutex>(this->m_cacheLock, std::try_to_lock));
+  void Bulk(std::function<void(Cache<T>&)> fn) {
+    std::lock_guard<std::mutex>(this->m_cacheLock);
+    fn(*this);
   }
 
   void Insert(const std::string& key, const T& value) {
@@ -51,16 +53,15 @@ public:
 
   void Trim() {
     std::lock_guard<std::mutex>(this->m_cacheLock);
-    std::vector<std::string> toDelete;
     time_point<steady_clock> now = steady_clock::now();
+
     // Delete expired entries
-    for (auto& it : this->m_cache) {
-      if (!it.second.IsValid(now)) {
-        toDelete.push_back(it.first);
+    for (auto it = this->m_cache.cbegin(); it != this->m_cache.cend(); ) {
+      if (!it->second.IsValid(now)) {
+        it = this->m_cache.erase(it);
+      } else {
+        it++;
       }
-    }
-    for (auto& it : toDelete) {
-      this->m_cache.erase(it);
     }
   }
 

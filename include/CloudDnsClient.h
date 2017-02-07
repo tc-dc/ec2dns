@@ -3,6 +3,7 @@
 
 #include "dlz_minimal.h"
 #include "Cache.h"
+#include "Instance.h"
 #include "Stats.h"
 #include "RequestThrottler.h"
 #include "CloudDnsConfig.h"
@@ -20,6 +21,7 @@
 
 using namespace std::chrono;
 
+
 class CloudDnsClient;
 class HostMatcher;
 class ReverseLookupHelper;
@@ -34,7 +36,6 @@ struct dlz_state {
     std::shared_ptr<CloudDnsClient> client;
     std::unique_ptr<HostMatcher> matcher;
     std::unique_ptr<ReverseLookupHelper> rl_helper;
-    std::unique_ptr<StatsServer> stats_server;
     std::shared_ptr<StatsReceiver> stats_receiver;
     std::string soa_data;
     std::string zone_name;
@@ -43,24 +44,6 @@ struct dlz_state {
     DlzCallbacks callbacks;
 };
 
-
-class Instance {
-public:
-    Instance(const std::string &instanceId,
-             const std::string &privateIp,
-             const std::string &az)
-        : m_instanceId(instanceId), m_privateIp(privateIp), m_az(az)
-    {}
-
-    inline const std::string& GetInstanceId() const{ return m_instanceId; }
-    inline const std::string& GetPrivateIpAddress() const{ return m_privateIp; }
-    inline const std::string& GetZone() const{ return m_az; }
-
-private:
-    std::string m_instanceId;
-    std::string m_privateIp;
-    std::string m_az;
-};
 
 class CloudDnsClient {
 public:
@@ -74,12 +57,13 @@ public:
         m_apiSuccesses(statsReceiver->Create("api_success")),
         m_lookupRequests(statsReceiver->Create("a_requests")),
         m_reverseLookupRequests(statsReceiver->Create("ptr_requests")),
-        m_autoscalerRequests(statsReceiver->Create("autoscaler_requests"))
+        m_autoscalerRequests(statsReceiver->Create("autoscaler_requests")),
+        m_shutdown(false)
     {}
 
-    void LaunchRefreshThread() {
-      this->m_refreshThread = std::thread(&CloudDnsClient::_RefreshInstanceData, this);
-    }
+    virtual ~CloudDnsClient();
+
+    void LaunchRefreshThread();
 
     bool TryResolveIp(const std::string &instanceId, const std::string &clientAddr, std::string *ip);
     bool TryResolveHostname(const std::string &ip, const std::string &clientAddr, std::string *hostname);
@@ -87,32 +71,30 @@ public:
 
 protected:
     void _RefreshInstanceData();
-    void _RefreshAutoscalerDataImpl(const std::vector<Instance>& instances);
-    void _RefreshInstanceDataImpl();
-    virtual bool _DescribeInstances(const std::string& instanceId, const std::string& ip, std::vector<Instance> *instances) = 0;
+    void _RefreshInstanceDataImpl(bool force = false);
+    virtual void _AfterRefresh() {}
+    bool _CheckHostCache(const std::string& instanceId, std::string *ip);
+
+    virtual void _RefreshAutoscalerDataImpl(const std::vector<std::unique_ptr<Instance>>& instances);
+    virtual bool _DescribeInstances(const std::string& instanceId, const std::string& ip, std::vector<std::unique_ptr<Instance>> *instances) = 0;
     virtual bool _DescribeAutoscalingGroups(std::unordered_map<std::string, const std::unordered_set<std::string>> *results) = 0;
+
+    virtual bool _QueryInstanceById(const std::string& instanceId, const std::string& clientAddr, std::string *ip);
+    virtual bool _QueryInstanceByIp(const std::string& ip, const std::string& clientAddr, std::string *hostname);
 
     CloudDnsConfig m_config;
     std::unique_ptr<RequestThrottler> m_throttler;
-
     Cache<std::string> m_hostCache;
     Cache<std::vector<std::string>> m_asgCache;
-
-
     std::shared_ptr<Stat> m_cacheHits, m_cacheMisses,
         m_apiFailures, m_apiRequests, m_apiSuccesses,
         m_lookupRequests, m_reverseLookupRequests, m_autoscalerRequests;
 
 private:
-    const std::string _GetHostname(const Instance& instance);
+    const std::string _GetHostname(const std::unique_ptr<Instance>& instance);
+    bool _Resolve(const std::string &key, const std::string &clientAddr, const std::function<bool(const std::string&, const std::string&, std::string*)> valueFactory, std::string *value);
 
-    bool _CheckHostCache(const std::string& instanceId, std::string *ip);
-
-    bool _Resolve(const std::string &key, const std::string &clientAddr, const std::function<bool(const std::string&, std::string*)> valueFactory, std::string *value);
-    bool _QueryInstanceById(const std::string& instanceId, std::string *ip);
-    bool _QueryInstanceByIp(const std::string& ip, std::string *hostname);
-
-
+    std::atomic_bool m_shutdown;
     std::thread m_refreshThread;
 };
 

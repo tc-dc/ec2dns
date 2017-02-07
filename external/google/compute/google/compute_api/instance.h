@@ -351,6 +351,11 @@ class Instance : public client::JsonCppData {
     *MutableStorage("kind") = value.data();
   }
 
+  const client::JsonCppAssociativeArray<std::string> get_labels() const {
+    const Json::Value& storage = Storage("labels");
+    return client::JsonCppAssociativeArray<std::string>(storage);
+  }
+
   /**
    * Determine if the '<code>machineType</code>' attribute was set.
    *
@@ -421,7 +426,10 @@ class Instance : public client::JsonCppData {
   /**
    * Get a reference to the value of the '<code>metadata</code>' attribute.
    */
-  const Metadata get_metadata() const;
+  const Metadata get_metadata() const {
+    const Json::Value& storage = Storage("metadata");
+    return client::JsonValueToCppValueHelper<Metadata>(storage);
+  }
 
   /**
    * Gets a reference to a mutable value of the '<code>metadata</code>'
@@ -716,7 +724,10 @@ class Instance : public client::JsonCppData {
   /**
    * Get a reference to the value of the '<code>tags</code>' attribute.
    */
-  const Tags get_tags() const;
+  const Tags get_tags() const {
+    const Json::Value& storage = Storage("tags");
+    return client::JsonValueToCppValueHelper<Tags>(storage);
+  }
 
   /**
    * Gets a reference to a mutable value of the '<code>tags</code>' property.

@@ -21,7 +21,9 @@ class CloudDnsConfig {
         asg_dns_tag("twitter:aws:dns-alias"),
         request_batch_size(200),
         request_timeout_ms(1000),
-        connect_timeout_ms(1000)
+        connect_timeout_ms(1000),
+        max_request_pool_size(10),
+        max_request_concurrency(100)
   { }
 
   std::string provider;
@@ -52,6 +54,9 @@ class CloudDnsConfig {
 
   std::string region;
   std::string region_code;
+
+  uint32_t max_request_pool_size;
+  uint32_t max_request_concurrency;
 
   bool TryLoad(const std::string& file);
 };

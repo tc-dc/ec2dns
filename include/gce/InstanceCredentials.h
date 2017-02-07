@@ -26,13 +26,20 @@ class InstanceCredentials : public AuthorizationCredential {
   virtual void RefreshAsync(googleapis::Callback1<Status>* callback);
 
  private:
+  struct _Token {
+    _Token(const std::string& _token, const std::chrono::system_clock::time_point& _expiresOn)
+        : token(_token), expiresOn(_expiresOn) {}
+
+    std::string token;
+    std::chrono::system_clock::time_point expiresOn;
+  };
+
   HttpRequest* MakeRefreshRequest();
   void FinishRefreshAsync(googleapis::Callback1<Status>* callback, HttpRequest* request);
   Status FinishRefresh(HttpRequest* request);
 
   HttpTransport* m_transport;
-  std::string m_token;
-  std::chrono::system_clock::time_point m_expiresOn;
+  std::unique_ptr<_Token> m_token;
   static const std::string m_type;
 };
 

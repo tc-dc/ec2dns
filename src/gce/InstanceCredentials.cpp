@@ -10,7 +10,6 @@ using namespace googleapis::util;
 const std::string InstanceCredentials::m_type = "instanceCredentials";
 
 const std::string INSTANCE_METADATA_URI = "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token";
-//const std::string INSTANCE_METADATA_URI = "http://localhost:8090/test";
 const std::string METADATA_FLAVOR_HEADER = "metadata-flavor";
 const std::string METADATA_FLAVOR_VALUE = "Google";
 
@@ -42,8 +41,10 @@ Status InstanceCredentials::FinishRefresh(HttpRequest *request) {
       return StatusInternalError("unable to parse json");
     }
 
+    std::string token;
+    std::chrono::system_clock::time_point expiresOn;
     if (root.isMember("access_token") && root["access_token"].isString()) {
-      m_token = "Bearer " + root["access_token"].asString();
+      token = "Bearer " + root["access_token"].asString();
       LOG(INFO) << "Got bearer token successfully from metadata";
     } else {
       LOG(ERROR) << "Unable to find access_token in response json";
@@ -51,9 +52,9 @@ Status InstanceCredentials::FinishRefresh(HttpRequest *request) {
     }
     if (root.isMember("expires_in") && root["expires_in"].isInt()) {
       auto expiresIn = root["expires_in"].asInt();
-      m_expiresOn = std::chrono::system_clock::now() + std::chrono::seconds(expiresIn);
+      expiresOn = std::chrono::system_clock::now() + std::chrono::seconds(expiresIn);
     }
-
+    this->m_token = std::unique_ptr<_Token>(new _Token(token, expiresOn));
   } else {
     LOG(ERROR) << "Unable to refresh from metadata endpoint, got error = " << status.ToString();
   }
@@ -73,8 +74,8 @@ void InstanceCredentials::FinishRefreshAsync(googleapis::Callback1<Status> *call
 }
 
 Status InstanceCredentials::AuthorizeRequest(HttpRequest *request) {
-  if (!m_token.empty()) {
-    request->AddHeader(HttpRequest::HttpHeader_AUTHORIZATION, m_token);
+  if (m_token) {
+    request->AddHeader(HttpRequest::HttpHeader_AUTHORIZATION, m_token->token);
   }
   return StatusOk();
 }
