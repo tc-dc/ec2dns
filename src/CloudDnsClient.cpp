@@ -79,29 +79,28 @@ bool CloudDnsConfig::TryLoad(const std::string& file) {
 
 CloudDnsClient::~CloudDnsClient() {
   LOG(WARNING) << "Shutting down DNS client";
-  this->m_shutdown = true;
+  this->m_shutdownLock.unlock();
   this->m_refreshThread.join();
+
+  while(this->m_pending > 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
 }
 
 void CloudDnsClient::LaunchRefreshThread() {
+  this->m_shutdownLock.lock();
   this->m_refreshThread = std::thread(&CloudDnsClient::_RefreshInstanceData, this);
 }
 
 void CloudDnsClient::_RefreshInstanceData() {
-  std::chrono::seconds sleepDuration(this->m_config.refresh_interval);
+  boost::chrono::seconds sleepDuration(this->m_config.refresh_interval);
   while (true) {
     this->_RefreshInstanceDataImpl();
     this->m_throttler->Trim();
     this->_AfterRefresh();
-    auto sleepEnd = std::chrono::steady_clock::now() + sleepDuration;
-    /* GCC 4.8.5 has a bug where timed_mutex is broken in linux,
-     * this works around it by just polling every second :'(
-     */
-    while (std::chrono::steady_clock::now() < sleepEnd) {
-      std::this_thread::sleep_for(std::chrono::seconds(1));
-      if (this->m_shutdown) {
-        return;
-      }
+
+    if (this->m_shutdownLock.try_lock_for(sleepDuration)) {
+      return;
     }
   }
 }
@@ -167,6 +166,7 @@ bool CloudDnsClient::_Resolve(
     return false;
   }
   this->m_throttler->OnMiss(key, clientAddr);
+  Pending p(&this->m_pending);
   if (valueFactory(key, clientAddr, value)) {
     this->m_hostCache.Insert(key, *value);
     return true;

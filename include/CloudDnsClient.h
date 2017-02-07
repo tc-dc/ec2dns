@@ -17,6 +17,7 @@
 
 #include <aws/core/client/ClientConfiguration.h>
 #include <boost/regex.hpp>
+#include <boost/thread/mutex.hpp>
 #include <glog/logging.h>
 
 using namespace std::chrono;
@@ -49,7 +50,7 @@ class CloudDnsClient {
 public:
     CloudDnsClient(
         const CloudDnsConfig config, std::shared_ptr<StatsReceiver> statsReceiver)
-      : m_config(config), m_throttler(new RequestThrottler()),
+      : m_config(config), m_throttler(new RequestThrottler(statsReceiver)),
         m_hostCache("host", statsReceiver, config.instance_timeout),
         m_asgCache("asg", statsReceiver, config.instance_timeout),
         m_apiFailures(statsReceiver->Create("api_failure")),
@@ -58,7 +59,7 @@ public:
         m_lookupRequests(statsReceiver->Create("a_requests")),
         m_reverseLookupRequests(statsReceiver->Create("ptr_requests")),
         m_autoscalerRequests(statsReceiver->Create("autoscaler_requests")),
-        m_shutdown(false)
+        m_pending(0)
     {}
 
     virtual ~CloudDnsClient();
@@ -94,7 +95,19 @@ private:
     const std::string _GetHostname(const std::unique_ptr<Instance>& instance);
     bool _Resolve(const std::string &key, const std::string &clientAddr, const std::function<bool(const std::string&, const std::string&, std::string*)> valueFactory, std::string *value);
 
-    std::atomic_bool m_shutdown;
+    class Pending {
+     public:
+      Pending(std::atomic_uint_fast32_t *val) : m_val(val) { (*m_val)++; }
+      ~Pending() { (*m_val)--; }
+
+      Pending(Pending&&) = delete;
+      Pending(const Pending&) = delete;
+     private:
+      std::atomic_uint_fast32_t* m_val;
+    };
+
+    std::atomic_uint_fast32_t m_pending;
+    boost::timed_mutex m_shutdownLock;
     std::thread m_refreshThread;
 };
 

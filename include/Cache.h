@@ -1,9 +1,12 @@
 #pragma once
 
 #include <memory>
-#include <mutex>
 #include <string>
 #include <unordered_map>
+
+#include <boost/thread/lock_guard.hpp>
+#include <boost/thread/shared_lock_guard.hpp>
+#include <boost/thread/shared_mutex.hpp>
 
 #include "CacheEntry.h"
 #include "Stats.h"
@@ -21,21 +24,31 @@ public:
   { }
 
   bool TryGet(const std::string& key, T* value) {
-    std::lock_guard<std::mutex> lock(this->m_cacheLock);
+    CacheEntry<T> tmp;
+    if (TryGet(key, &tmp)) {
+      *value = tmp.GetItem();
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  bool TryGet(const std::string& key, CacheEntry<T>* value) {
+    ReadLock lock(this->m_cacheLock);
     auto found = this->m_cache.find(key);
     if (found == this->m_cache.end()) {
       this->m_misses->Increment();
       return false;
     }
     else {
-      *value = found->second.GetItem();
+      *value = found->second;
       this->m_hits->Increment();
       return true;
     }
   }
 
   void Bulk(std::function<void(Cache<T>&)> fn) {
-    std::lock_guard<std::mutex>(this->m_cacheLock);
+    WriteLock lock(this->m_cacheLock);
     fn(*this);
   }
 
@@ -44,7 +57,7 @@ public:
     this->Insert(key, value, expiresOn);
   }
   void Insert(const std::string& key, const T& value, const std::chrono::time_point<std::chrono::steady_clock> expiresOn) {
-    std::lock_guard<std::mutex> lock(this->m_cacheLock);
+    WriteLock lock(this->m_cacheLock);
     this->InsertNoLock(key, value, expiresOn);
   }
   void InsertNoLock(const std::string& key, const T& value, const std::chrono::time_point<std::chrono::steady_clock> expiresOn) {
@@ -52,22 +65,34 @@ public:
   }
 
   void Trim() {
-    std::lock_guard<std::mutex>(this->m_cacheLock);
+    UpgradeableLock lock(this->m_cacheLock);
     time_point<steady_clock> now = steady_clock::now();
 
-    // Delete expired entries
-    for (auto it = this->m_cache.cbegin(); it != this->m_cache.cend(); ) {
-      if (!it->second.IsValid(now)) {
-        it = this->m_cache.erase(it);
-      } else {
-        it++;
+    std::vector<std::string> keys;
+    // Find expired entries
+    for (const auto& it : this->m_cache) {
+      if (!it.second.IsValid(now)) {
+        keys.push_back(it.first);
+      }
+    }
+
+    // If there's anything to delete, upgrade the lock and do it.
+    if (!keys.empty()) {
+      Upgrade upgradeLock(lock);
+      for (const auto& k : keys) {
+        this->m_cache.erase(k);
       }
     }
   }
 
 private:
+  typedef boost::shared_lock_guard<boost::shared_mutex> ReadLock;
+  typedef boost::upgrade_lock<boost::shared_mutex> UpgradeableLock;
+  typedef boost::upgrade_to_unique_lock<boost::shared_mutex> Upgrade;
+  typedef boost::lock_guard<boost::shared_mutex> WriteLock;
+
   unsigned int m_defaultTimeout;
   std::unordered_map<std::string, CacheEntry<T>> m_cache;
-  std::mutex m_cacheLock;
+  boost::shared_mutex m_cacheLock;
   std::shared_ptr<Stat> m_hits, m_misses;
 };
